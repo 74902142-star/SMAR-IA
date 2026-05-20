@@ -1,0 +1,13 @@
+fastapi
+uvicorn[standard]
+sqlalchemy
+websockets
+pydantic
+scikit-learn
+joblib
+pandas
+numpy
+python-jose[cryptography]
+passlib[bcrypt]
+python-dotenv
+psutil
