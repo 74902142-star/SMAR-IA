@@ -1,150 +1,124 @@
-import { useState, useContext } from 'react';
+import { useState, useContext, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { AuthContext } from '../context/AuthContext';
-import { Container, Form, Button } from 'react-bootstrap';
-import { Shield, User, Fingerprint, Zap, AlertTriangle, Radio, QrCode, Smile } from 'lucide-react';
+import { Shield, User, Lock, ArrowRight, Wifi, AlertTriangle } from 'lucide-react';
 import { toast } from 'react-toastify';
-import { useEffect } from 'react';
 
 export default function Login() {
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
-  const { login } = useContext(AuthContext);
-
-  const [time, setTime] = useState('23:59:04');
+  const [loading, setLoading] = useState(false);
+  const { login, token } = useContext(AuthContext);
+  const navigate = useNavigate();
+  const [time, setTime] = useState('');
 
   useEffect(() => {
-    const timer = setInterval(() => {
-      const now = new Date();
-      setTime(now.toLocaleTimeString('en-GB', { hour12: false }));
-    }, 1000);
-    return () => clearInterval(timer);
+    const tick = () => setTime(new Date().toLocaleTimeString('es-PE', { hour12: false }));
+    tick();
+    const t = setInterval(tick, 1000);
+    return () => clearInterval(t);
   }, []);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    const success = await login(username, password);
-    if (success) {
-      toast.success("ACCESO CONCEDIDO: ENLACE ESTABLECIDO", {
-        theme: "dark",
-        position: "top-center",
-        autoClose: 2000,
-      });
-    } else {
-      toast.error("ACCESO DENEGADO: CREDENCIALES INVÁLIDAS", { 
-        theme: "dark",
-        position: "top-center",
-        autoClose: 3000,
-        hideProgressBar: false,
-        closeOnClick: true,
-        pauseOnHover: true,
-        draggable: true,
-      });
+    setLoading(true);
+    try {
+      const success = await login(username, password);
+      if (success) {
+        toast.success('Acceso concedido', { position: 'top-center', autoClose: 2000 });
+        navigate('/');
+      } else {
+        toast.error('Credenciales inválidas', { position: 'top-center' });
+      }
+    } finally {
+      setLoading(false);
     }
   };
 
   return (
-    <div className="login-container">
-      {/* Header Logo Section */}
-      <div className="login-header-logo">
-        <h1 className="main-logo">SMAR-<span className="pink-text">IA</span></h1>
-        <div className="secure-access-divider">
-          <div className="line"></div>
-          <span className="secure-text">ACCESO SEGURO</span>
-          <div className="line"></div>
-        </div>
+    <div className="login-page">
+      <div className="login-grid-overlay" />
+
+      {/* Floating status bottom-left */}
+      <div style={{ position:'fixed', bottom:24, left:28, display:'flex', alignItems:'center', gap:8, fontSize:'0.68rem', fontFamily:"'Space Mono',monospace", color:'var(--text-muted)' }}>
+        <span className="status-dot green pulse" />
+        SISTEMA ACTIVO · {time}
       </div>
 
-      <div className="login-wrapper">
-        <div className="cyber-card login-card">
-          {/* Corner accents */}
-          <div className="corner-accent top-left"></div>
-          <div className="corner-accent top-right"></div>
-          <div className="corner-accent bottom-left"></div>
-          <div className="corner-accent bottom-right"></div>
+      {/* Floating label bottom-right */}
+      <div style={{ position:'fixed', bottom:24, right:28, fontSize:'0.68rem', fontFamily:"'Space Mono',monospace", color:'var(--text-muted)', textAlign:'right' }}>
+        NODO: CORE_CENTRAL_01<br />
+        <span style={{color:'var(--text-muted)'}}>v1.0.0 · ENCRIPTADO</span>
+      </div>
 
-          <Form onSubmit={handleSubmit} className="cyber-form">
-            <Form.Group className="mb-4">
-              <Form.Label className="cyber-label">ID DE OPERADOR</Form.Label>
-              <div className="cyber-input-wrapper">
-                <User size={18} className="input-icon" />
-                <Form.Control 
-                  type="text" 
-                  className="cyber-input" 
-                  placeholder="USUARIO_NEON_88" 
+      <div className="login-center">
+        {/* Brand */}
+        <div className="login-brand">
+          <div className="login-brand-logo">
+            <Shield size={30} />
+          </div>
+          <div className="login-brand-title">SMAR<span>-IA</span></div>
+          <div className="login-brand-sub">INTRUSION DETECTION SYSTEM</div>
+        </div>
+
+        {/* Card */}
+        <div className="login-card">
+          <form onSubmit={handleSubmit}>
+            <div className="mb-4">
+              <label className="login-field-label">ID de Operador</label>
+              <div className="login-input-group">
+                <User size={16} className="icon" />
+                <input
+                  id="login-username"
+                  type="text"
+                  placeholder="admin"
                   value={username}
                   onChange={e => setUsername(e.target.value)}
-                  required 
+                  required
+                  autoComplete="username"
                 />
               </div>
-            </Form.Group>
+            </div>
 
-            <Form.Group className="mb-4">
-              <Form.Label className="cyber-label">CONTRASEÑA</Form.Label>
-              <div className="cyber-input-wrapper">
-                <Fingerprint size={18} className="input-icon" />
-                <Form.Control 
-                  type="password" 
-                  className="cyber-input" 
-                  placeholder="••••••••••••" 
+            <div className="mb-5">
+              <label className="login-field-label">Contraseña</label>
+              <div className="login-input-group">
+                <Lock size={16} className="icon" />
+                <input
+                  id="login-password"
+                  type="password"
+                  placeholder="••••••••"
                   value={password}
                   onChange={e => setPassword(e.target.value)}
-                  required 
+                  required
+                  autoComplete="current-password"
                 />
               </div>
-            </Form.Group>
-
-            <div className="form-options mb-4">
-              <div className="cyber-toggle">
-                <div className="toggle-switch"></div>
-                <span className="toggle-label">SESIÓN ENCRIPTADA</span>
-              </div>
-              <a href="#" className="emergency-link">¿PROTOCOLO DE EMERGENCIA?</a>
             </div>
 
-            <Button type="submit" className="cyber-btn-primary">
-              INICIALIZAR ENLACE <Zap size={18} className="ms-2" />
-            </Button>
+            <button
+              id="login-submit"
+              type="submit"
+              className="login-submit-btn"
+              disabled={loading}
+            >
+              {loading ? 'AUTENTICANDO...' : (
+                <>INICIAR SESIÓN <ArrowRight size={15} style={{marginLeft:6}} /></>
+              )}
+            </button>
 
-            <div className="card-footer-status mt-4">
-              <div className="status-indicator">
-                <span className="status-label">ESTADO DE TERMINAL</span>
-                <div className="status-value">
-                  <div className="status-dot-auth"></div>
-                  LISTO_PARA_CONECTAR
-                </div>
-              </div>
-              <div className="footer-icons">
-                <QrCode size={18} />
-                <Smile size={18} className="ms-3" />
-              </div>
+            <div className="login-status-row">
+              <span className="status-dot green" />
+              <span>CONEXIÓN SEGURA · TLS 1.3</span>
+              <Wifi size={12} style={{marginLeft:'auto'}} />
             </div>
-          </Form>
+          </form>
         </div>
 
-        {/* Warning and Node info */}
-        <div className="login-bottom-info">
-          <div className="warning-text">
-            <AlertTriangle size={14} className="me-2" />
-            EL ACCESO NO AUTORIZADO ACTIVARÁ PROTOCOLOS DE MITIGACIÓN FÍSICA.
-          </div>
-          <div className="node-info mt-2">
-            <Radio size={14} className="me-2" />
-            NODO DEL SISTEMA: CORE_CENTRAL_TOKYO_B4
-          </div>
+        <div className="login-warning">
+          <AlertTriangle size={13} style={{color:'var(--amber)', flexShrink:0, marginTop:1}} />
+          <span>El acceso no autorizado está prohibido y será registrado. Solo personal autorizado.</span>
         </div>
-      </div>
-
-      {/* Bottom status bars */}
-      <div className="bottom-status-bar left">
-        <div className="progress-track">
-          <div className="progress-fill"></div>
-        </div>
-        <span className="status-text">FLUJO_DE_DATOS: ACTIVO</span>
-      </div>
-
-      <div className="bottom-status-bar right">
-        <span className="status-label">HORA_LOCAL</span>
-        <span className="time-value">{time}</span>
       </div>
     </div>
   );

@@ -1,0 +1,46 @@
+services:
+  backend:
+    build: ./backend
+    privileged: true
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./backend:/app
+      - backend_data:/app/instance
+    environment:
+      - SMAR_IA_DRY_RUN=false
+      - SMAR_IA_WEBHOOK_URL=${SMAR_IA_WEBHOOK_URL:-}
+      - SMAR_IA_SECURITY_DB=sqlite:///./instance/security_logs.db
+      - SMAR_IA_TRAFFIC_DB=sqlite:///./instance/traffic.db
+    depends_on:
+      - ml_init
+
+  frontend:
+    build: ./frontend
+    ports:
+      - "80:80"
+    environment:
+      - VITE_API_URL=http://localhost:8000
+    depends_on:
+      - backend
+
+  simulation:
+    build: ./backend
+    volumes:
+      - ./backend:/app
+    command: >
+      python -c "from simulation import simulate_traffic; import time; time.sleep(5); simulate_traffic()"
+    depends_on:
+      - backend
+
+  ml_init:
+    build:
+      context: ./ml_pipeline
+      dockerfile: Dockerfile
+    volumes:
+      - ml_models:/app/models
+    command: python train_model.py && python export_model.py
+
+volumes:
+  backend_data:
+  ml_models:

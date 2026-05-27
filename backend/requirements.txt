@@ -11,3 +11,8 @@ python-jose[cryptography]
 passlib[bcrypt]
 python-dotenv
 psutil
+httpx
+slowapi
+alembic
+jinja2
+aiosmtplib

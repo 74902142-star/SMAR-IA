@@ -27,7 +27,7 @@ MODELS_DIR = os.getenv("SMAR_IA_MODELS_DIR", os.path.join(os.path.dirname(__file
 NUM_FEATURES = int(os.getenv("SMAR_IA_NUM_FEATURES", "80"))
 
 # ── Umbrales de Decisión ─────────────────────────────────────────────────────
-AUTO_BLOCK_THRESHOLD = float(os.getenv("SMAR_IA_AUTO_BLOCK_THRESHOLD", "0.95"))
+AUTO_BLOCK_THRESHOLD = float(os.getenv("SMAR_IA_AUTO_BLOCK_THRESHOLD", "0.85"))
 SUSPICIOUS_ALERT_COUNT = int(os.getenv("SMAR_IA_SUSPICIOUS_ALERT_COUNT", "3"))
 SUSPICIOUS_WINDOW_MINUTES = int(os.getenv("SMAR_IA_SUSPICIOUS_WINDOW_MINUTES", "5"))
 

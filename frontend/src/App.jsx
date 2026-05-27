@@ -1,7 +1,8 @@
 import { useContext } from 'react';
-import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
+import { ThemeProvider, ThemeContext } from './context/ThemeContext';
 import { AuthProvider, AuthContext } from './context/AuthContext';
 import { ToastContainer } from 'react-toastify';
+import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import Login from './pages/Login';
 import Layout from './pages/Layout';
 import Dashboard from './pages/Dashboard';
@@ -9,6 +10,7 @@ import TrafficMonitor from './pages/TrafficMonitor';
 import MitigationZone from './pages/MitigationZone';
 import Settings from './pages/Settings';
 import Logs from './pages/Logs';
+import RuleManager from './pages/RuleManager';
 
 
 
@@ -36,6 +38,7 @@ function AppRoutes() {
         <Route path="mitigation" element={<MitigationZone />} />
         <Route path="settings" element={<Settings />} />
         <Route path="logs" element={<Logs />} />
+        <Route path="rules" element={<RuleManager />} />
 
 
       </Route>
@@ -43,14 +46,24 @@ function AppRoutes() {
   );
 }
 
-function App() {
+function AppContent() {
+  const { theme } = useContext(ThemeContext);
+
   return (
     <Router>
       <AuthProvider>
         <AppRoutes />
-        <ToastContainer theme="dark" />
+        <ToastContainer theme={theme === 'light' ? 'light' : 'dark'} position="top-right" />
       </AuthProvider>
     </Router>
+  );
+}
+
+function App() {
+  return (
+    <ThemeProvider>
+      <AppContent />
+    </ThemeProvider>
   );
 }
 

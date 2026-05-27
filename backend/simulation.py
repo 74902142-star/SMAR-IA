@@ -4,52 +4,74 @@ import numpy as np
 from database import TrafficSessionLocal, NetworkTraffic
 from datetime import datetime, timezone
 
+ATTACK_CLASSES = ['DDoS SYN Flood', 'DDoS UDP Flood', 'Sniffing Pasivo',
+                  'DHCP Starvation', 'DHCP Spoofing', 'Port Scanning', 'Brute Force']
+
 def generate_ip():
     return f"192.168.1.{random.randint(2, 254)}"
 
+def _gen_attack_features(attack_type: str) -> list:
+    x = [random.gauss(0, 0.5) for _ in range(80)]
+    if attack_type == 'DDoS SYN Flood':
+        for i in range(10): x[i] += random.uniform(2.0, 4.0)
+        for i in range(15, 20): x[i] += random.uniform(1.5, 3.0)
+    elif attack_type == 'DDoS UDP Flood':
+        for i in range(10, 20): x[i] += random.uniform(2.5, 4.5)
+        for i in range(25, 30): x[i] += random.uniform(1.0, 2.5)
+    elif attack_type == 'Port Scanning':
+        for i in range(20, 35): x[i] += random.uniform(1.5, 3.5)
+        for i in range(40, 45): x[i] += random.uniform(1.0, 2.0)
+    elif attack_type == 'Brute Force':
+        for i in range(30, 40): x[i] += random.uniform(2.0, 5.0)
+        for i in range(50, 55): x[i] += random.uniform(1.0, 3.0)
+    elif attack_type == 'DHCP Starvation':
+        for i in range(35, 45): x[i] += random.uniform(2.0, 4.0)
+        for i in range(60, 65): x[i] += random.uniform(1.5, 3.0)
+    elif attack_type == 'DHCP Spoofing':
+        for i in range(40, 50): x[i] += random.uniform(2.0, 4.5)
+        for i in range(70, 75): x[i] += random.uniform(1.0, 2.5)
+    elif attack_type == 'Sniffing Pasivo':
+        for i in range(45, 55): x[i] += random.uniform(1.0, 2.0)
+        for i in range(55, 60): x[i] += random.uniform(0.5, 1.5)
+    return x
+
 def simulate_traffic():
-    print("Iniciando simulador de tráfico AVANZADO...")
+    print("Iniciando simulador de tráfico...")
     db = TrafficSessionLocal()
-    
-    # Mantener una IP atacante persistente por un tiempo para forzar que aparezca en la Zona de Mitigación
     current_attacker_ip = None
     attack_burst_remaining = 0
+    current_attack_type = None
 
     try:
         while True:
-            # Lógica para ráfagas de ataques desde una misma IP
             if attack_burst_remaining > 0:
                 source_ip = current_attacker_ip
-                # Forzar características anómalas severas
-                features = np.random.randn(80) * 10 + 20
+                features = _gen_attack_features(current_attack_type)
                 attack_burst_remaining -= 1
-                sleep_time = random.uniform(0.1, 0.3) # Muy rápido (ráfaga)
-                print(f"[{datetime.now(timezone.utc)}] [ALERTA] Ráfaga de ataque desde {source_ip} (Restantes: {attack_burst_remaining})")
+                sleep_time = random.uniform(0.1, 0.3)
+                print(f"[{datetime.now(timezone.utc)}] [ATAQUE] {current_attack_type} desde {source_ip} ({attack_burst_remaining} restantes)")
             else:
                 source_ip = generate_ip()
-                features = np.random.randn(80)
-                sleep_time = random.uniform(0.5, 2.0)
-                
-                # Ocasionalmente iniciar un nuevo ataque
-                if random.random() < 0.05: # 5% de probabilidad de iniciar ráfaga
+                if random.random() < 0.05:
                     current_attacker_ip = source_ip
-                    attack_burst_remaining = random.randint(4, 8) # 4 a 8 peticiones seguidas
-                    print(f"\n--- NUEVA RÁFAGA DE ATAQUE DETECTADA DESDE {current_attacker_ip} ---\n")
-                
-            features_csv = ",".join(map(str, features))
-            
+                    current_attack_type = random.choice(ATTACK_CLASSES)
+                    attack_burst_remaining = random.randint(4, 8)
+                    features = _gen_attack_features(current_attack_type)
+                    attack_burst_remaining -= 1
+                    sleep_time = random.uniform(0.1, 0.3)
+                    print(f"\n--- NUEVO ATAQUE: {current_attack_type} desde {current_attacker_ip} ---\n")
+                else:
+                    features = [random.gauss(0.0, 0.8) for _ in range(80)]
+                    sleep_time = random.uniform(0.5, 2.0)
+                    print(f"[{datetime.now(timezone.utc)}] Tráfico normal desde {source_ip}")
+
             traffic_entry = NetworkTraffic(
                 source_ip=source_ip,
                 destination_ip="192.168.1.1",
-                features_csv=features_csv
+                features_csv=",".join(map(str, features))
             )
-            
             db.add(traffic_entry)
             db.commit()
-            
-            if attack_burst_remaining == 0:
-                print(f"[{datetime.now(timezone.utc)}] Tráfico normal desde {traffic_entry.source_ip}")
-            
             time.sleep(sleep_time)
     except KeyboardInterrupt:
         print("Simulador detenido.")

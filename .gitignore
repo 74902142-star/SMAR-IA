@@ -1,0 +1,45 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.egg-info/
+.venv/
+venv/
+*.egg
+
+# Databases
+*.db
+backend/security_logs.db
+backend/traffic.db
+
+# Environment
+.env
+backend/.env
+backend/.env.example
+ml_pipeline/.env
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+backend/logs/*.json
+*.log
+
+# ML models
+ml_pipeline/venv/
+
+# Test artifacts
+backend/test_security.db
+backend/test_traffic.db
+.pytest_cache/
+
+# Docker
+docker-compose.override.yml

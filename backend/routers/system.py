@@ -2,15 +2,16 @@
 SMAR-IA — Router de Sistema
 Endpoints de salud, estadísticas y métricas (ISO A.8.16).
 """
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Response
 from sqlalchemy.orm import Session
 from sqlalchemy import func, case, extract
-from database import get_security_db, get_traffic_db, SecurityLog, NetworkTraffic
+from database import get_security_db, get_traffic_db, SecurityLog, NetworkTraffic, BlockedIP, Whitelist
 from ml_service import ml_service
 from config import APP_VERSION, APP_NAME, DRY_RUN, AUTO_BLOCK_THRESHOLD
-from datetime import datetime, timezone, timedelta
+from datetime import datetime, timedelta
 import time
-import os
+import csv
+import io
 
 router = APIRouter(prefix="/api", tags=["system"])
 
@@ -65,7 +66,7 @@ def health_check():
         "status": "online" if all_ok else "degraded",
         "app": APP_NAME,
         "version": APP_VERSION,
-        "timestamp": datetime.now(timezone.utc).isoformat(),
+        "timestamp": datetime.utcnow().isoformat() + 'Z',
         "uptime": f"{hours:03d}:{minutes:02d}:{seconds:02d}",
         "uptime_seconds": round(uptime_seconds),
         "components": {
@@ -90,7 +91,7 @@ def get_system_stats(db: Session = Depends(get_security_db)):
     Estadísticas globales del sistema para el Dashboard y TrafficMonitor.
     Combina datos de seguridad, modelo ML y recursos del sistema.
     """
-    now = datetime.now(timezone.utc)
+    now = datetime.utcnow()
     last_24h = now - timedelta(hours=24)
 
     # ── Conteos generales ────────────────────────────────────────
@@ -178,6 +179,23 @@ def get_system_stats(db: Session = Depends(get_security_db)):
         SecurityLog.action_taken == "ALERTED (Pending Manual Review)"
     ).scalar() or 0
 
+    active_blocked_ips = db.query(func.count(BlockedIP.id)).filter(
+        BlockedIP.is_active == 1
+    ).scalar() or 0
+
+    whitelist_count = db.query(func.count(Whitelist.id)).scalar() or 0
+
+    avg_latency_row = db.query(func.avg(SecurityLog.latency_ms)).filter(
+        SecurityLog.latency_ms != None
+    ).scalar()
+    avg_latency = round(float(avg_latency_row), 2) if avg_latency_row else 0.0
+
+    recent_blocked_ips = db.query(BlockedIP.ip).filter(
+        BlockedIP.is_active == 1
+    ).order_by(BlockedIP.blocked_at.desc()).limit(5).all()
+
+    blocked_ips_list = [row[0] for row in recent_blocked_ips]
+
     # ── Métricas de recursos del sistema ─────────────────────────
     cpu_percent = 0.0
     ram_percent = 0.0
@@ -214,6 +232,9 @@ def get_system_stats(db: Session = Depends(get_security_db)):
             "auto_blocked": auto_blocked,
             "manual_blocked": manual_blocked,
             "pending_alerts": pending_alerts,
+            "active_blocked_ips": active_blocked_ips,
+            "whitelist_count": whitelist_count,
+            "avg_latency_ms": avg_latency,
         },
         "model": {
             "confidence_avg": avg_confidence,
@@ -224,6 +245,7 @@ def get_system_stats(db: Session = Depends(get_security_db)):
         "attack_distribution": distribution,
         "top_attackers": top_attackers,
         "hourly_traffic": hourly_data,
+        "blocked_ips": blocked_ips_list,
         "resources": {
             "cpu_percent": cpu_percent,
             "ram_percent": ram_percent,
@@ -263,4 +285,87 @@ def get_alerts_count(db: Session = Depends(get_security_db)):
     return {
         "pending_count": pending,
         "recent_alerts": alerts_list,
+    }
+
+
+@router.get("/logs/export")
+def export_logs(
+    format: str = "csv",
+    limit: int = 1000,
+    db: Session = Depends(get_security_db),
+):
+    logs = db.query(SecurityLog).order_by(SecurityLog.timestamp.desc()).limit(limit).all()
+
+    if format == "csv":
+        output = io.StringIO()
+        writer = csv.writer(output)
+        writer.writerow(["id", "timestamp", "source_ip", "destination_ip", "attack_type", "confidence", "action_taken", "iso_control", "latency_ms", "whitelist_hit"])
+        for log in logs:
+            writer.writerow([
+                log.id,
+                log.timestamp.isoformat() if log.timestamp else "",
+                log.source_ip,
+                log.destination_ip,
+                log.attack_type,
+                log.confidence,
+                log.action_taken,
+                log.iso_control,
+                log.latency_ms or "",
+                1 if log.whitelist_hit else 0,
+            ])
+        return Response(
+            content=output.getvalue(),
+            media_type="text/csv",
+            headers={"Content-Disposition": "attachment; filename=security_logs.csv"},
+        )
+
+    return {"error": "Unsupported format"}
+
+
+@router.get("/stats/active-threats")
+def get_active_threats(db: Session = Depends(get_security_db)):
+    pending_alerts = db.query(SecurityLog).filter(
+        SecurityLog.action_taken == "ALERTED (Pending Manual Review)"
+    ).order_by(SecurityLog.timestamp.desc()).limit(10).all()
+
+    active_sources = db.query(
+        SecurityLog.source_ip,
+        func.count(SecurityLog.id).label("count"),
+        func.max(SecurityLog.timestamp).label("last_seen")
+    ).filter(
+        SecurityLog.action_taken == "ALERTED (Pending Manual Review)"
+    ).group_by(SecurityLog.source_ip).order_by(func.count(SecurityLog.id).desc()).limit(10).all()
+
+    blocked = db.query(BlockedIP).filter(BlockedIP.is_active == 1).order_by(BlockedIP.blocked_at.desc()).limit(20).all()
+
+    return {
+        "pending_alerts": [
+            {
+                "id": log.id,
+                "source_ip": log.source_ip,
+                "attack_type": log.attack_type,
+                "confidence": log.confidence,
+                "timestamp": log.timestamp.isoformat() if log.timestamp else None,
+            }
+            for log in pending_alerts
+        ],
+        "top_sources": [
+            {
+                "source_ip": row[0],
+                "count": row[1],
+                "last_seen": row[2].isoformat() if row[2] else None,
+            }
+            for row in active_sources
+        ],
+        "blocked_ips": [
+            {
+                "ip": entry.ip,
+                "blocked_at": entry.blocked_at.isoformat() if entry.blocked_at else None,
+                "method": entry.method,
+                "reason": entry.reason,
+            }
+            for entry in blocked
+        ],
+        "total_pending": len(pending_alerts),
+        "total_blocked": len(blocked),
     }
