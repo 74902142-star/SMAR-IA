@@ -3,10 +3,11 @@ import { Row, Col } from 'react-bootstrap';
 import {
   BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell
 } from 'recharts';
-import { ShieldAlert, Activity, Database, Search, Lock } from 'lucide-react';
+import { ShieldAlert, Activity, Database, Search, Lock, X } from 'lucide-react';
 
 import { toast } from 'react-toastify';
 import { AuthContext } from '../context/AuthContext';
+import { apiUrl, wsUrl } from '../api';
 
 function severityOf(confidence) {
   if (confidence >= 0.90) return { level:'critical', label:'CRÍTICO',  color:'rose',  Icon: ShieldAlert };
@@ -21,15 +22,18 @@ export default function TrafficMonitor() {
   const [heatmapData, setHeatmapData]   = useState([]);
   const [activeThreats, setActiveThreats] = useState({ pending_alerts: [], top_sources: [], blocked_ips: [] });
   const [mitigStats, setMitigStats]     = useState({ shields:0, suppression:0 });
+  const [detailCard, setDetailCard]     = useState(null);
+  const [purging, setPurging]           = useState(false);
   const ws = useRef(null);
+  const wsToken = token;
 
   /* ── Stats ── */
   useEffect(() => {
     const fetch_ = async () => {
       try {
         const [statsRes, activeRes] = await Promise.all([
-          fetch('http://localhost:8000/api/stats'),
-          fetch('http://localhost:8000/api/stats/active-threats'),
+          fetch(apiUrl('/api/stats')),
+          fetch(apiUrl('/api/stats/active-threats')),
         ]);
         const statsData = statsRes.ok ? await statsRes.json() : null;
         const activeData = activeRes.ok ? await activeRes.json() : null;
@@ -38,7 +42,7 @@ export default function TrafficMonitor() {
           setSummaryStats({ critical: statsData.counts?.critical||0, warning: statsData.counts?.warning||0, info: statsData.counts?.info||0 });
           if (statsData.hourly_traffic?.length > 0)
             setHeatmapData(statsData.hourly_traffic.map(h => ({ name: h.hour, val: h.count })));
-          const tot = (statsData.counts?.critical||0)+(statsData.counts?.warning||0)+(statsData.counts?.info||0);
+          const tot = (statsData.counts?.critical||0)+(statsData.counts?.warning||0)+(statsData.counts||0);
           const blk = (statsData.counts?.auto_blocked||0)+(statsData.counts?.manual_blocked||0);
           setMitigStats({
             shields: tot > 0 ? Math.min(Math.round((blk/tot)*100),100) : 0,
@@ -50,7 +54,7 @@ export default function TrafficMonitor() {
           setActiveThreats(activeData);
         }
       } catch (err) {
-        console.error('TrafficMonitor fetch error', err);
+        if (import.meta.env.DEV) console.warn('TrafficMonitor fetch error', err);
       }
     };
     fetch_();
@@ -60,7 +64,7 @@ export default function TrafficMonitor() {
 
   /* ── Initial threat cards ── */
   useEffect(() => {
-    fetch('http://localhost:8000/api/logs?limit=20')
+    fetch(apiUrl('/api/logs?limit=20'))
       .then(r => r.ok ? r.json() : [])
       .then(data => {
         const attacks = data.filter(l => l.attack_type && l.attack_type !== 'Normal' && l.attack_type !== 'Unknown').slice(0,6);
@@ -76,7 +80,10 @@ export default function TrafficMonitor() {
 
   /* ── WebSocket live feed ── */
   useEffect(() => {
-    ws.current = new WebSocket('ws://localhost:8000/ws');
+    ws.current = new WebSocket(wsUrl('/ws'));
+    ws.current.onopen = () => {
+      if (token) ws.current.send(JSON.stringify({ token }));
+    };
     ws.current.onmessage = (event) => {
       const data = JSON.parse(event.data);
       if (data.type === 'traffic_update') {
@@ -96,12 +103,12 @@ export default function TrafficMonitor() {
       }
     };
     return () => { if (ws.current) ws.current.close(); };
-  }, []);
+  }, [token]);
 
   /* ── Block IP ── */
   const handleBlock = async (ip, title) => {
     try {
-      const r = await fetch('http://localhost:8000/api/mitigation/block', {
+      const r = await fetch(apiUrl('/api/mitigation/block'), {
         method:'POST',
         headers:{'Content-Type':'application/json','Authorization':`Bearer ${token}`},
         body: JSON.stringify({ ip, action:'BLOCK_IP', attack_type: title }),
@@ -114,6 +121,32 @@ export default function TrafficMonitor() {
       }
     } catch { toast.error('Fallo de conexión'); }
   };
+
+  /* ── Emergency purge ── */
+  const handleEmergencyPurge = async () => {
+    if (!window.confirm('¿Está seguro de ejecutar un PURGADO DE EMERGENCIA? Se desbloquearán TODAS las IPs y se limpiarán las alertas pendientes.')) return;
+    setPurging(true);
+    try {
+      const unblockPromises = activeThreats.blocked_ips.map(item =>
+        fetch(apiUrl('/api/mitigation/unblock'), {
+          method:'POST',
+          headers:{'Content-Type':'application/json','Authorization':`Bearer ${token}`},
+          body: JSON.stringify({ ip: item.ip }),
+        })
+      );
+      await Promise.allSettled(unblockPromises);
+      toast.success(`Purga completada: ${activeThreats.blocked_ips.length} IPs desbloqueadas`);
+      setThreatCards([]);
+      setActiveThreats(prev => ({ ...prev, blocked_ips: [], pending_alerts: [] }));
+    } catch {
+      toast.error('Error durante el purgado de emergencia');
+    } finally {
+      setPurging(false);
+    }
+  };
+
+  const pendingCount = activeThreats.pending_alerts ? activeThreats.pending_alerts.length : activeThreats.total_pending ?? 0;
+  const blockedCount = activeThreats.blocked_ips ? activeThreats.blocked_ips.length : activeThreats.total_blocked ?? 0;
 
   const heatmap = heatmapData.length > 0 ? heatmapData : [
     {name:'00h',val:0},{name:'03h',val:0},{name:'06h',val:0},{name:'09h',val:0},
@@ -130,8 +163,8 @@ export default function TrafficMonitor() {
         </div>
         <div style={{display:'flex', flexDirection:'column', gap:10}}>
           <div style={{display:'flex', gap:8}}>
-            <div className="badge-pill rose">{activeThreats.total_pending ?? 0} alertas pendientes</div>
-            <div className="badge-pill emerald">{activeThreats.total_blocked ?? 0} IPs bloqueadas</div>
+            <div className="badge-pill rose">{pendingCount} alertas pendientes</div>
+            <div className="badge-pill emerald">{blockedCount} IPs bloqueadas</div>
           </div>
           <div style={{display:'flex', gap:12}}>
             {[
@@ -139,7 +172,7 @@ export default function TrafficMonitor() {
               { label:'ADVERTENCIA', value: summaryStats.warning, c:'amber' },
               { label:'INFO', value: summaryStats.info, c:'cyan' },
             ].map(({ label, value, c }) => (
-              <div key={label} style={{background:'rgba(0,0,0,0.3)', border:`1px solid rgba(255,255,255,0.07)`, borderTop:`3px solid var(--${c})`, borderRadius:'var(--radius-sm)', padding:'8px 18px', textAlign:'center', minWidth:90}}>
+              <div key={label} style={{background:'var(--bg-card)', border:`1px solid var(--border-default)`, borderTop:`3px solid var(--${c})`, borderRadius:'var(--radius-sm)', padding:'8px 18px', textAlign:'center', minWidth:90}}>
                 <div style={{fontSize:'0.6rem', letterSpacing:'1.5px', color:`var(--${c})`, marginBottom:4}}>{label}</div>
                 <div style={{fontSize:'1.4rem', fontWeight:900, color:`var(--${c})`}}>{String(value).padStart(2,'0')}</div>
               </div>
@@ -179,7 +212,8 @@ export default function TrafficMonitor() {
                       BLOQUEAR
                     </button>
                   )}
-                  <button className="btn-outline" style={{padding:'5px 12px', fontSize:'0.7rem'}}>DETALLES</button>
+                  <button className="btn-outline" style={{padding:'5px 12px', fontSize:'0.7rem'}}
+                    onClick={() => setDetailCard(card)}>DETALLES</button>
                 </div>
               </div>
             </div>
@@ -195,6 +229,35 @@ export default function TrafficMonitor() {
           </div>
         )}
       </div>
+
+      {/* ── Detail modal ── */}
+      {detailCard && (
+        <div className="modal-backdrop" onClick={() => setDetailCard(null)}>
+          <div className="modal-content" onClick={e => e.stopPropagation()}>
+            <div className="modal-header">
+              <span>Detalles de Amenaza</span>
+              <X size={16} onClick={() => setDetailCard(null)} style={{cursor:'pointer'}} />
+            </div>
+            <div className="modal-body">
+              <div className="detail-row"><span className="detail-label">Tipo</span><span className="detail-value">{detailCard.title}</span></div>
+              <div className="detail-row"><span className="detail-label">Origen</span><span className="detail-value">{detailCard.sourceIp}</span></div>
+              <div className="detail-row"><span className="detail-label">Destino</span><span className="detail-value">{detailCard.destIp}</span></div>
+              <div className="detail-row"><span className="detail-label">Confianza</span><span className="detail-value">{detailCard.confidence}%</span></div>
+              <div className="detail-row"><span className="detail-label">Severidad</span><span className="detail-value">{detailCard.label}</span></div>
+              <div className="detail-row"><span className="detail-label">Detectado</span><span className="detail-value">{detailCard.ago}</span></div>
+              <div className="detail-row"><span className="detail-label">Acción</span><span className="detail-value">{detailCard.actionTaken || 'Pendiente'}</span></div>
+            </div>
+            <div className="modal-footer">
+              <button className="btn-outline" onClick={() => setDetailCard(null)}>Cerrar</button>
+              {!detailCard.actionTaken?.includes('BLOCKED') && (
+                <button className="btn-ghost-rose" onClick={() => { handleBlock(detailCard.sourceIp, detailCard.title); setDetailCard(null); }}>
+                  BLOQUEAR IP
+                </button>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
 
       <div style={{display:'grid', gap:12, gridTemplateColumns:'repeat(auto-fit,minmax(240px,1fr))', marginTop:12}}>
         <div className="widget" style={{padding:'18px 20px'}}>
@@ -266,7 +329,7 @@ export default function TrafficMonitor() {
                     />
                     <Bar dataKey="val" radius={[4,4,0,0]}>
                       {heatmap.map((e,i) => (
-                        <Cell key={i} fill={e.val>10?'var(--rose)':'var(--blue)'} fillOpacity={0.7} />
+                        <Cell key={`hm-${i}`} fill={e.val>10?'var(--rose)':'var(--blue)'} fillOpacity={0.7} />
                       ))}
                     </Bar>
                   </BarChart>
@@ -304,8 +367,9 @@ export default function TrafficMonitor() {
                   : mitigStats.shields > 30 ? 'Mitigación parcial activa. Revisión manual recomendada.'
                   : 'Nivel bajo. Iniciar procedimiento de respuesta.'}
               </p>
-              <button className="btn-ghost-rose" style={{width:'100%', justifyContent:'center', marginTop:12}}>
-                PURGADO DE EMERGENCIA
+              <button className="btn-ghost-rose" style={{width:'100%', justifyContent:'center', marginTop:12}}
+                onClick={handleEmergencyPurge} disabled={purging}>
+                {purging ? 'PURGANDO...' : 'PURGADO DE EMERGENCIA'}
               </button>
             </div>
           </div>

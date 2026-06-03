@@ -1,12 +1,15 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useContext } from 'react';
 import { Row, Col } from 'react-bootstrap';
 import {
   Activity, AlertTriangle, ShieldCheck, Cpu, Server,
   Clock, Target, List
 } from 'lucide-react';
 import { toast } from 'react-toastify';
+import { apiUrl } from '../api';
+import { AuthContext } from '../context/AuthContext';
 
 export default function Dashboard() {
+  const { token } = useContext(AuthContext);
   const [logs, setLogs] = useState([]);
   const [systemStats, setSystemStats] = useState(null);
   const [livePackets, setLivePackets] = useState([]);
@@ -59,18 +62,19 @@ export default function Dashboard() {
     };
 
     /* ── Initial logs ── */
-    fetch('http://localhost:8000/api/logs?limit=12')
-      .then(r => r.json())
-      .then(d => setLogs(d))
-      .catch(() => {});
+    const headers = token ? { Authorization: `Bearer ${token}` } : {};
+    fetch(apiUrl('/api/logs?limit=12'), { headers })
+      .then(r => r.ok ? r.json() : [])
+      .then(d => Array.isArray(d) ? setLogs(d) : setLogs([]))
+      .catch(() => setLogs([]));
 
-    return () => ws.current?.close();
+    return () => { if (ws.current) ws.current.close(); };
   }, []);
 
   /* ── Stats polling ─────────────────────────────────── */
   useEffect(() => {
     const fetch_ = () => {
-      fetch('http://localhost:8000/api/stats')
+      fetch(apiUrl('/api/stats'))
         .then(r => r.ok ? r.json() : null)
         .then(d => { if (d) setSystemStats(d); })
         .catch(() => {});
@@ -234,7 +238,7 @@ export default function Dashboard() {
                 </div>
                 <div style={{display:'flex', flexDirection:'column', gap:8}}>
                   {systemStats?.attack_distribution?.slice(0,3).map((a, i) => (
-                    <div key={i} style={{display:'flex', alignItems:'center', justifyContent:'space-between', padding:'8px 10px', background:'rgba(0,0,0,0.2)', borderRadius:'var(--radius-sm)', fontSize:'0.72rem'}}>
+                    <div key={i} style={{display:'flex', alignItems:'center', justifyContent:'space-between', padding:'8px 10px', background:'var(--input-bg)', borderRadius:'var(--radius-sm)', fontSize:'0.72rem'}}>
                       <span style={{color:'var(--text-secondary)'}}>{a.type}</span>
                       <span className="badge-pill rose">{a.count}</span>
                     </div>
@@ -313,7 +317,7 @@ export default function Dashboard() {
             </div>
             <div className="widget-body" style={{padding:0}}>
               <div className="dash-terminal" style={{padding:'16px 20px'}}>
-                {logs.map((log, i) => (
+                {Array.isArray(logs) && logs.map((log, i) => (
                   <div key={i} className={`dash-log-line ${log.isLive ? 'live-fade-in' : ''}`}>
                     <span className="dash-log-time">[{new Date(log.timestamp).toLocaleTimeString()}]</span>
                     <span className={`dash-log-msg ${log.attack_type ? 'alert' : 'info'}`}>
@@ -323,7 +327,7 @@ export default function Dashboard() {
                     </span>
                   </div>
                 ))}
-                {!logs.length && (
+                {(!Array.isArray(logs) || !logs.length) && (
                   <div className="dash-log-line"><span className="dash-log-time">--:--:--</span><span className="dash-log-msg">Esperando transmisión de datos...</span></div>
                 )}
               </div>

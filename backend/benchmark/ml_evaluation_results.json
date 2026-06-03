@@ -1,0 +1,867 @@
+{
+  "experiment": "Validaci\u00f3n Cruzada SMAR-IA (5-Fold)",
+  "n_samples": 4000,
+  "n_splits": 5,
+  "n_features": 80,
+  "model_type": "RandomForestClassifier",
+  "class_names": [
+    "Brute Force",
+    "DDoS SYN Flood",
+    "DDoS UDP Flood",
+    "DHCP Spoofing",
+    "DHCP Starvation",
+    "Normal",
+    "Port Scanning",
+    "Sniffing Pasivo"
+  ],
+  "fold_results": [
+    {
+      "fold": 1,
+      "accuracy": 1.0,
+      "precision_macro": 1.0,
+      "recall_macro": 1.0,
+      "f1_macro": 1.0,
+      "per_class": {
+        "Brute Force": {
+          "precision": 1.0,
+          "recall": 1.0,
+          "f1_score": 1.0
+        },
+        "DDoS SYN Flood": {
+          "precision": 1.0,
+          "recall": 1.0,
+          "f1_score": 1.0
+        },
+        "DDoS UDP Flood": {
+          "precision": 1.0,
+          "recall": 1.0,
+          "f1_score": 1.0
+        },
+        "DHCP Spoofing": {
+          "precision": 1.0,
+          "recall": 1.0,
+          "f1_score": 1.0
+        },
+        "DHCP Starvation": {
+          "precision": 1.0,
+          "recall": 1.0,
+          "f1_score": 1.0
+        },
+        "Normal": {
+          "precision": 1.0,
+          "recall": 1.0,
+          "f1_score": 1.0
+        },
+        "Port Scanning": {
+          "precision": 1.0,
+          "recall": 1.0,
+          "f1_score": 1.0
+        },
+        "Sniffing Pasivo": {
+          "precision": 1.0,
+          "recall": 1.0,
+          "f1_score": 1.0
+        }
+      },
+      "confusion_matrix": [
+        [
+          100,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        [
+          0,
+          100,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        [
+          0,
+          0,
+          100,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        [
+          0,
+          0,
+          0,
+          100,
+          0,
+          0,
+          0,
+          0
+        ],
+        [
+          0,
+          0,
+          0,
+          0,
+          100,
+          0,
+          0,
+          0
+        ],
+        [
+          0,
+          0,
+          0,
+          0,
+          0,
+          100,
+          0,
+          0
+        ],
+        [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          100,
+          0
+        ],
+        [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          100
+        ]
+      ]
+    },
+    {
+      "fold": 2,
+      "accuracy": 1.0,
+      "precision_macro": 1.0,
+      "recall_macro": 1.0,
+      "f1_macro": 1.0,
+      "per_class": {
+        "Brute Force": {
+          "precision": 1.0,
+          "recall": 1.0,
+          "f1_score": 1.0
+        },
+        "DDoS SYN Flood": {
+          "precision": 1.0,
+          "recall": 1.0,
+          "f1_score": 1.0
+        },
+        "DDoS UDP Flood": {
+          "precision": 1.0,
+          "recall": 1.0,
+          "f1_score": 1.0
+        },
+        "DHCP Spoofing": {
+          "precision": 1.0,
+          "recall": 1.0,
+          "f1_score": 1.0
+        },
+        "DHCP Starvation": {
+          "precision": 1.0,
+          "recall": 1.0,
+          "f1_score": 1.0
+        },
+        "Normal": {
+          "precision": 1.0,
+          "recall": 1.0,
+          "f1_score": 1.0
+        },
+        "Port Scanning": {
+          "precision": 1.0,
+          "recall": 1.0,
+          "f1_score": 1.0
+        },
+        "Sniffing Pasivo": {
+          "precision": 1.0,
+          "recall": 1.0,
+          "f1_score": 1.0
+        }
+      },
+      "confusion_matrix": [
+        [
+          100,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        [
+          0,
+          100,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        [
+          0,
+          0,
+          100,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        [
+          0,
+          0,
+          0,
+          100,
+          0,
+          0,
+          0,
+          0
+        ],
+        [
+          0,
+          0,
+          0,
+          0,
+          100,
+          0,
+          0,
+          0
+        ],
+        [
+          0,
+          0,
+          0,
+          0,
+          0,
+          100,
+          0,
+          0
+        ],
+        [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          100,
+          0
+        ],
+        [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          100
+        ]
+      ]
+    },
+    {
+      "fold": 3,
+      "accuracy": 1.0,
+      "precision_macro": 1.0,
+      "recall_macro": 1.0,
+      "f1_macro": 1.0,
+      "per_class": {
+        "Brute Force": {
+          "precision": 1.0,
+          "recall": 1.0,
+          "f1_score": 1.0
+        },
+        "DDoS SYN Flood": {
+          "precision": 1.0,
+          "recall": 1.0,
+          "f1_score": 1.0
+        },
+        "DDoS UDP Flood": {
+          "precision": 1.0,
+          "recall": 1.0,
+          "f1_score": 1.0
+        },
+        "DHCP Spoofing": {
+          "precision": 1.0,
+          "recall": 1.0,
+          "f1_score": 1.0
+        },
+        "DHCP Starvation": {
+          "precision": 1.0,
+          "recall": 1.0,
+          "f1_score": 1.0
+        },
+        "Normal": {
+          "precision": 1.0,
+          "recall": 1.0,
+          "f1_score": 1.0
+        },
+        "Port Scanning": {
+          "precision": 1.0,
+          "recall": 1.0,
+          "f1_score": 1.0
+        },
+        "Sniffing Pasivo": {
+          "precision": 1.0,
+          "recall": 1.0,
+          "f1_score": 1.0
+        }
+      },
+      "confusion_matrix": [
+        [
+          100,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        [
+          0,
+          100,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        [
+          0,
+          0,
+          100,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        [
+          0,
+          0,
+          0,
+          100,
+          0,
+          0,
+          0,
+          0
+        ],
+        [
+          0,
+          0,
+          0,
+          0,
+          100,
+          0,
+          0,
+          0
+        ],
+        [
+          0,
+          0,
+          0,
+          0,
+          0,
+          100,
+          0,
+          0
+        ],
+        [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          100,
+          0
+        ],
+        [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          100
+        ]
+      ]
+    },
+    {
+      "fold": 4,
+      "accuracy": 1.0,
+      "precision_macro": 1.0,
+      "recall_macro": 1.0,
+      "f1_macro": 1.0,
+      "per_class": {
+        "Brute Force": {
+          "precision": 1.0,
+          "recall": 1.0,
+          "f1_score": 1.0
+        },
+        "DDoS SYN Flood": {
+          "precision": 1.0,
+          "recall": 1.0,
+          "f1_score": 1.0
+        },
+        "DDoS UDP Flood": {
+          "precision": 1.0,
+          "recall": 1.0,
+          "f1_score": 1.0
+        },
+        "DHCP Spoofing": {
+          "precision": 1.0,
+          "recall": 1.0,
+          "f1_score": 1.0
+        },
+        "DHCP Starvation": {
+          "precision": 1.0,
+          "recall": 1.0,
+          "f1_score": 1.0
+        },
+        "Normal": {
+          "precision": 1.0,
+          "recall": 1.0,
+          "f1_score": 1.0
+        },
+        "Port Scanning": {
+          "precision": 1.0,
+          "recall": 1.0,
+          "f1_score": 1.0
+        },
+        "Sniffing Pasivo": {
+          "precision": 1.0,
+          "recall": 1.0,
+          "f1_score": 1.0
+        }
+      },
+      "confusion_matrix": [
+        [
+          100,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        [
+          0,
+          100,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        [
+          0,
+          0,
+          100,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        [
+          0,
+          0,
+          0,
+          100,
+          0,
+          0,
+          0,
+          0
+        ],
+        [
+          0,
+          0,
+          0,
+          0,
+          100,
+          0,
+          0,
+          0
+        ],
+        [
+          0,
+          0,
+          0,
+          0,
+          0,
+          100,
+          0,
+          0
+        ],
+        [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          100,
+          0
+        ],
+        [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          100
+        ]
+      ]
+    },
+    {
+      "fold": 5,
+      "accuracy": 1.0,
+      "precision_macro": 1.0,
+      "recall_macro": 1.0,
+      "f1_macro": 1.0,
+      "per_class": {
+        "Brute Force": {
+          "precision": 1.0,
+          "recall": 1.0,
+          "f1_score": 1.0
+        },
+        "DDoS SYN Flood": {
+          "precision": 1.0,
+          "recall": 1.0,
+          "f1_score": 1.0
+        },
+        "DDoS UDP Flood": {
+          "precision": 1.0,
+          "recall": 1.0,
+          "f1_score": 1.0
+        },
+        "DHCP Spoofing": {
+          "precision": 1.0,
+          "recall": 1.0,
+          "f1_score": 1.0
+        },
+        "DHCP Starvation": {
+          "precision": 1.0,
+          "recall": 1.0,
+          "f1_score": 1.0
+        },
+        "Normal": {
+          "precision": 1.0,
+          "recall": 1.0,
+          "f1_score": 1.0
+        },
+        "Port Scanning": {
+          "precision": 1.0,
+          "recall": 1.0,
+          "f1_score": 1.0
+        },
+        "Sniffing Pasivo": {
+          "precision": 1.0,
+          "recall": 1.0,
+          "f1_score": 1.0
+        }
+      },
+      "confusion_matrix": [
+        [
+          100,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        [
+          0,
+          100,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        [
+          0,
+          0,
+          100,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        [
+          0,
+          0,
+          0,
+          100,
+          0,
+          0,
+          0,
+          0
+        ],
+        [
+          0,
+          0,
+          0,
+          0,
+          100,
+          0,
+          0,
+          0
+        ],
+        [
+          0,
+          0,
+          0,
+          0,
+          0,
+          100,
+          0,
+          0
+        ],
+        [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          100,
+          0
+        ],
+        [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          100
+        ]
+      ]
+    }
+  ],
+  "overall": {
+    "accuracy": 1.0,
+    "precision_macro": 1.0,
+    "recall_macro": 1.0,
+    "f1_macro": 1.0,
+    "per_class": {
+      "Brute Force": {
+        "precision": 1.0,
+        "recall": 1.0,
+        "f1_score": 1.0
+      },
+      "DDoS SYN Flood": {
+        "precision": 1.0,
+        "recall": 1.0,
+        "f1_score": 1.0
+      },
+      "DDoS UDP Flood": {
+        "precision": 1.0,
+        "recall": 1.0,
+        "f1_score": 1.0
+      },
+      "DHCP Spoofing": {
+        "precision": 1.0,
+        "recall": 1.0,
+        "f1_score": 1.0
+      },
+      "DHCP Starvation": {
+        "precision": 1.0,
+        "recall": 1.0,
+        "f1_score": 1.0
+      },
+      "Normal": {
+        "precision": 1.0,
+        "recall": 1.0,
+        "f1_score": 1.0
+      },
+      "Port Scanning": {
+        "precision": 1.0,
+        "recall": 1.0,
+        "f1_score": 1.0
+      },
+      "Sniffing Pasivo": {
+        "precision": 1.0,
+        "recall": 1.0,
+        "f1_score": 1.0
+      }
+    },
+    "confusion_matrix": [
+      [
+        500,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      [
+        0,
+        500,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      [
+        0,
+        0,
+        500,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      [
+        0,
+        0,
+        0,
+        500,
+        0,
+        0,
+        0,
+        0
+      ],
+      [
+        0,
+        0,
+        0,
+        0,
+        500,
+        0,
+        0,
+        0
+      ],
+      [
+        0,
+        0,
+        0,
+        0,
+        0,
+        500,
+        0,
+        0
+      ],
+      [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        500,
+        0
+      ],
+      [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        500
+      ]
+    ]
+  },
+  "classification_report": {
+    "Brute Force": {
+      "precision": 1.0,
+      "recall": 1.0,
+      "f1-score": 1.0,
+      "support": 500.0
+    },
+    "DDoS SYN Flood": {
+      "precision": 1.0,
+      "recall": 1.0,
+      "f1-score": 1.0,
+      "support": 500.0
+    },
+    "DDoS UDP Flood": {
+      "precision": 1.0,
+      "recall": 1.0,
+      "f1-score": 1.0,
+      "support": 500.0
+    },
+    "DHCP Spoofing": {
+      "precision": 1.0,
+      "recall": 1.0,
+      "f1-score": 1.0,
+      "support": 500.0
+    },
+    "DHCP Starvation": {
+      "precision": 1.0,
+      "recall": 1.0,
+      "f1-score": 1.0,
+      "support": 500.0
+    },
+    "Normal": {
+      "precision": 1.0,
+      "recall": 1.0,
+      "f1-score": 1.0,
+      "support": 500.0
+    },
+    "Port Scanning": {
+      "precision": 1.0,
+      "recall": 1.0,
+      "f1-score": 1.0,
+      "support": 500.0
+    },
+    "Sniffing Pasivo": {
+      "precision": 1.0,
+      "recall": 1.0,
+      "f1-score": 1.0,
+      "support": 500.0
+    },
+    "accuracy": 1.0,
+    "macro avg": {
+      "precision": 1.0,
+      "recall": 1.0,
+      "f1-score": 1.0,
+      "support": 4000.0
+    },
+    "weighted avg": {
+      "precision": 1.0,
+      "recall": 1.0,
+      "f1-score": 1.0,
+      "support": 4000.0
+    }
+  }
+}

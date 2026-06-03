@@ -1,0 +1,19 @@
+[tool.pytest.ini_options]
+minversion = "8.0"
+testpaths = ["test_comprehensive.py", "test_mitigation.py", "test_startup.py"]
+addopts = "-v --tb=short --cov=. --cov-report=xml --cov-report=term-missing --cov-fail-under=80"
+asyncio_mode = "auto"
+
+[tool.coverage.run]
+omit = [
+    "venv/*",
+    ".venv/*",
+    "__pycache__/*",
+    "routers/__pycache__/*",
+    "benchmark/*",
+    "logs/*",
+    "alembic/*",
+    "test_*.py",
+    "manage.py",
+    "simulation.py",
+]

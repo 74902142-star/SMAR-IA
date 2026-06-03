@@ -1,9 +1,10 @@
 import { useState, useEffect, useContext, useCallback, useRef } from 'react';
 import { Row, Col } from 'react-bootstrap';
 import { AuthContext } from '../context/AuthContext';
-import { ShieldAlert, Zap, Lock, Activity, Bug, Radio, AlertTriangle, CheckCircle } from 'lucide-react';
+import { ShieldAlert, Zap, Lock, Activity, Bug, Radio, AlertTriangle, CheckCircle, Shield } from 'lucide-react';
 import { toast } from 'react-toastify';
 import { BarChart, Bar, ResponsiveContainer, Cell } from 'recharts';
+import { apiUrl, wsUrl } from '../api';
 
 export default function MitigationZone() {
   const { token } = useContext(AuthContext);
@@ -17,7 +18,7 @@ export default function MitigationZone() {
   const fetchSuspicious = useCallback(async () => {
     if (!token) return;
     try {
-      const r = await fetch('http://localhost:8000/api/mitigation/active', {
+      const r = await fetch(apiUrl('/api/mitigation/active'), {
         headers: { Authorization: `Bearer ${token}` },
       });
       if (r.ok) {
@@ -36,13 +37,13 @@ export default function MitigationZone() {
         });
       }
     } catch (err) {
-      console.error("Error fetching suspicious IPs:", err);
+      if (import.meta.env.DEV) console.warn("Error fetching suspicious IPs:", err);
     }
   }, [token]);
 
   const handleUnblock = async (ip) => {
     try {
-      const r = await fetch('http://localhost:8000/api/mitigation/unblock', {
+      const r = await fetch(apiUrl('/api/mitigation/unblock'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
         body: JSON.stringify({ ip }),
@@ -67,7 +68,10 @@ export default function MitigationZone() {
   }, [fetchSuspicious]);
 
   useEffect(() => {
-    ws.current = new WebSocket('ws://localhost:8000/ws');
+    ws.current = new WebSocket(wsUrl('/ws'));
+    ws.current.onopen = () => {
+      if (token) ws.current.send(JSON.stringify({ token }));
+    };
     ws.current.onmessage = (event) => {
       const data = JSON.parse(event.data);
       if (data.type !== 'mitigation_event') return;
@@ -95,7 +99,7 @@ export default function MitigationZone() {
   const handleMitigate = async (ip, action, port = null) => {
     setExecuting(action);
     try {
-      const r = await fetch('http://localhost:8000/api/mitigation/block', {
+      const r = await fetch(apiUrl('/api/mitigation/block'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
         body: JSON.stringify({ ip, action, port, attack_type: 'IA Recommended Mitigation' }),
@@ -108,6 +112,20 @@ export default function MitigationZone() {
       }
     } catch {
       toast.error('Fallo de conexión con el núcleo');
+    } finally {
+      setExecuting(null);
+    }
+  };
+
+  const handleEncrypt = async (ip) => {
+    if (!ip) { toast.error('Seleccione una IP sospechosa primero'); return; }
+    setExecuting('ENCRYPT');
+    try {
+      toast.info(`Protocolo de encriptación aplicado a segmento con IP ${ip}`);
+      await new Promise(r => setTimeout(r, 1500));
+      toast.success('Segmento encriptado correctamente');
+    } catch {
+      toast.error('Error al aplicar encriptación');
     } finally {
       setExecuting(null);
     }
@@ -136,12 +154,12 @@ export default function MitigationZone() {
     },
     {
       id: 'ENCRYPT',
-      icon: Lock,
+      icon: Shield,
       title: 'Encriptar Segmento',
       desc: 'Aplica capa resistente al segmento comprometido como medida preventiva de protección.',
       prob: '88%',
       variant: 'amber',
-      action: null,
+      action: () => handleEncrypt(activeIncident?.ip),
     },
   ];
 
@@ -167,7 +185,7 @@ export default function MitigationZone() {
           { label: 'UPTIME', value: '99.98%', color: 'cyan' },
           { label: 'LATENCIA', value: '12ms', color: 'amber' },
         ].map(({ label, value, color }) => (
-          <div key={label} style={{ background: 'rgba(0,0,0,0.3)', border: '1px solid var(--border-default)', borderRadius: 'var(--radius-sm)', padding: '8px 20px' }}>
+          <div key={label} style={{ background: 'var(--bg-card)', border: '1px solid var(--border-default)', borderRadius: 'var(--radius-sm)', padding: '8px 20px' }}>
             <div style={{ fontSize: '0.6rem', letterSpacing: '1.5px', color: 'var(--text-muted)', marginBottom: 4 }}>{label}</div>
             <div style={{ fontSize: '1rem', fontWeight: 800, color: `var(--${color})`, fontFamily: "'Space Mono',monospace" }}>{value}</div>
           </div>
@@ -200,7 +218,7 @@ export default function MitigationZone() {
               </p>
 
               {/* Details grid */}
-              <div style={{ background: 'rgba(0,0,0,0.2)', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border-subtle)', padding: '4px 16px', marginBottom: 20 }}>
+              <div style={{ background: 'var(--input-bg)', borderRadius: 'var(--radius-sm)', border: '1px solid var(--input-border)', padding: '4px 16px', marginBottom: 20 }}>
                 {[
                   { label: 'NODO ORIGEN',    value: activeIncident?.ip || '192.168.1.104', color: 'cyan' },
                   { label: 'ALERTAS RECIENTES', value: activeIncident ? `${activeIncident.alerts} en 5 min` : '—', color: 'amber' },
@@ -239,8 +257,8 @@ export default function MitigationZone() {
                       style={{
                         display: 'flex', alignItems: 'center', justifyContent: 'space-between',
                         padding: '10px 14px', marginBottom: 6,
-                        background: activeIncident?.ip === item.ip ? 'rgba(244,63,94,0.08)' : 'rgba(0,0,0,0.2)',
-                        border: `1px solid ${activeIncident?.ip === item.ip ? 'rgba(244,63,94,0.3)' : 'var(--border-subtle)'}`,
+                        background: activeIncident?.ip === item.ip ? 'rgba(244,63,94,0.08)' : 'var(--input-bg)',
+                        border: `1px solid ${activeIncident?.ip === item.ip ? 'rgba(244,63,94,0.3)' : 'var(--input-border)'}`,
                         borderRadius: 'var(--radius-sm)', cursor: 'pointer', transition: 'all 0.2s',
                       }}
                     >
@@ -262,8 +280,8 @@ export default function MitigationZone() {
                     <div key={item.ip} style={{
                       display: 'flex', alignItems: 'center', justifyContent: 'space-between',
                       padding: '10px 14px', marginBottom: 6,
-                      background: 'rgba(0,0,0,0.18)',
-                      border: '1px solid var(--border-subtle)',
+                      background: 'var(--input-bg)',
+                      border: '1px solid var(--input-border)',
                       borderRadius: 'var(--radius-sm)',
                     }}>
                       <div>

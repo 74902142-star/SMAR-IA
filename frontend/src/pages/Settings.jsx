@@ -1,27 +1,68 @@
-import { useState, useContext } from 'react';
+import { useState, useContext, useEffect } from 'react';
 import { Row, Col } from 'react-bootstrap';
 import { Cpu, Bell, Palette, RefreshCcw, Save, Clock, Lock, Info, Shield, Activity, Moon, Sun } from 'lucide-react';
 import { toast } from 'react-toastify';
 import { ThemeContext } from '../context/ThemeContext';
+import { AuthContext } from '../context/AuthContext';
+import { apiUrl, apiPost } from '../api';
+
+const SETTINGS_KEY = 'smaria_settings';
+
+function loadLocal(key, def) {
+  try {
+    const data = JSON.parse(localStorage.getItem(SETTINGS_KEY) || '{}');
+    return data[key] !== undefined ? data[key] : def;
+  } catch { return def; }
+}
+
+function saveLocal(key, val) {
+  try {
+    const data = JSON.parse(localStorage.getItem(SETTINGS_KEY) || '{}');
+    data[key] = val;
+    localStorage.setItem(SETTINGS_KEY, JSON.stringify(data));
+  } catch {}
+}
 
 export default function Settings() {
-  const [autonomy, setAutonomy]       = useState(78);
-  const [neon, setNeon]               = useState(80);
-  const [schema, setSchema]           = useState('blue');
-  const [adaptiveReasoning, setAdaptive] = useState(true);
-  const [predictiveDeletion, setPredictive] = useState(false);
-  const [thresholds, setThresholds] = useState({ breaches: true, discrepancy: false, latency: true });
+  const { token } = useContext(AuthContext);
+  const [autonomy, setAutonomy]       = useState(() => loadLocal('autonomy', 78));
+  const [neon, setNeon]               = useState(() => loadLocal('neon', 80));
+  const [schema, setSchema]           = useState(() => loadLocal('schema', 'blue'));
+  const [alertPattern, setAlertPattern] = useState(() => loadLocal('alertPattern', 'CONTINUO'));
+  const [adaptiveReasoning, setAdaptive] = useState(() => loadLocal('adaptiveReasoning', true));
+  const [predictiveDeletion, setPredictive] = useState(() => loadLocal('predictiveDeletion', false));
+  const [thresholds, setThresholds]   = useState(() => loadLocal('thresholds', { breaches: true, discrepancy: false, latency: true }));
 
   const { theme, setTheme } = useContext(ThemeContext);
 
-  const handleSave = () => {
-    toast.success('Configuración guardada correctamente', {
-      position: 'bottom-right', autoClose: 3000,
-    });
+  useEffect(() => { saveLocal('autonomy', autonomy); }, [autonomy]);
+  useEffect(() => { saveLocal('neon', neon); }, [neon]);
+  useEffect(() => { saveLocal('schema', schema); }, [schema]);
+  useEffect(() => { saveLocal('alertPattern', alertPattern); }, [alertPattern]);
+  useEffect(() => { saveLocal('adaptiveReasoning', adaptiveReasoning); }, [adaptiveReasoning]);
+  useEffect(() => { saveLocal('predictiveDeletion', predictiveDeletion); }, [predictiveDeletion]);
+  useEffect(() => { saveLocal('thresholds', thresholds); }, [thresholds]);
+
+  const handleSave = async () => {
+    try {
+      const payload = {
+        autonomy, neon, schema, alertPattern,
+        adaptiveReasoning, predictiveDeletion,
+        thresholds: JSON.stringify(thresholds),
+      };
+      if (token) {
+        await apiPost('/api/settings/bulk', payload, token);
+      }
+      toast.success('Configuración guardada correctamente', {
+        position: 'bottom-right', autoClose: 3000,
+      });
+    } catch {
+      toast.error('Error al guardar configuración', { position: 'bottom-right' });
+    }
   };
 
   const handleReset = () => {
-    setAutonomy(78); setNeon(80); setSchema('blue');
+    setAutonomy(78); setNeon(80); setSchema('blue'); setAlertPattern('CONTINUO');
     setAdaptive(true); setPredictive(false);
     setThresholds({ breaches: true, discrepancy: false, latency: true });
     toast.info('Valores restablecidos', { position: 'bottom-right' });
@@ -67,8 +108,8 @@ export default function Settings() {
             </div>
             <div className="settings-card-body" style={{ display: 'flex', gap: 14, flexWrap: 'wrap' }}>
               {[
-                { value: 'dark', icon: Moon, label: 'Oscuro' },
                 { value: 'light', icon: Sun, label: 'Claro' },
+                { value: 'dark', icon: Moon, label: 'Oscuro' },
               ].map(({ value, icon: Icon, label }) => (
                 <button
                   key={value}
@@ -192,7 +233,7 @@ export default function Settings() {
                   { icon: Shield,   label: 'Módulo ML',      status: 'CARGADO',     color: 'blue' },
                   { icon: Activity, label: 'API Backend',    status: 'EN LÍNEA',    color: 'emerald' },
                 ].map(({ icon: Icon, label, status, color }) => (
-                  <div key={label} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 14px', background: 'rgba(0,0,0,0.2)', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border-subtle)' }}>
+                  <div key={label} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 14px', background: 'var(--input-bg)', borderRadius: 'var(--radius-sm)', border: '1px solid var(--input-border)' }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: '0.78rem' }}>
                       <Icon size={14} style={{ color: `var(--${color})` }} />
                       <span style={{ color: 'var(--text-secondary)' }}>{label}</span>
@@ -243,21 +284,25 @@ export default function Settings() {
                 PATRÓN DE ALERTA
               </div>
               <div style={{ display: 'flex', gap: 10 }}>
-                {['CONTINUO', 'PULSO', 'RÁFAGA'].map((p, i) => (
-                  <div
-                    key={p}
-                    style={{
-                      flex: 1, padding: '10px', textAlign: 'center',
-                      background: i === 0 ? 'rgba(59,130,246,0.1)' : 'rgba(0,0,0,0.2)',
-                      border: `1px solid ${i === 0 ? 'rgba(59,130,246,0.3)' : 'var(--border-subtle)'}`,
-                      borderRadius: 'var(--radius-sm)', fontSize: '0.65rem', letterSpacing: '1px',
-                      color: i === 0 ? 'var(--blue)' : 'var(--text-muted)', cursor: 'pointer',
-                      fontWeight: i === 0 ? 700 : 400,
-                    }}
-                  >
-                    {p}
-                  </div>
-                ))}
+                {['CONTINUO', 'PULSO', 'RÁFAGA'].map(p => {
+                  const active = alertPattern === p;
+                  return (
+                    <div
+                      key={p}
+                      onClick={() => setAlertPattern(p)}
+                      style={{
+                        flex: 1, padding: '10px', textAlign: 'center', cursor: 'pointer',
+                        background: active ? 'rgba(59,130,246,0.1)' : 'var(--input-bg)',
+                        border: `1px solid ${active ? 'rgba(59,130,246,0.3)' : 'var(--input-border)'}`,
+                        borderRadius: 'var(--radius-sm)', fontSize: '0.65rem', letterSpacing: '1px',
+                        color: active ? 'var(--blue)' : 'var(--text-muted)',
+                        fontWeight: active ? 700 : 400,
+                      }}
+                    >
+                      {p}
+                    </div>
+                  );
+                })}
               </div>
             </div>
           </div>

@@ -1,9 +1,19 @@
 /* eslint-disable react-refresh/only-export-components */
 import { createContext, useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { apiUrl } from '../api';
+
+const IS_DEV = import.meta.env.DEV;
+
+function devLog(...args) {
+  if (IS_DEV) {
+    if (args[0]?.startsWith?.('LOGIN') || args[0]?.startsWith?.('TOKEN')) {
+      console.warn(...args);
+    }
+  }
+}
 
 export const AuthContext = createContext();
-const API_BASE_URL = 'http://127.0.0.1:8000';
 
 export const AuthProvider = ({ children }) => {
   const [user, setUser] = useState(null);
@@ -11,7 +21,6 @@ export const AuthProvider = ({ children }) => {
   const [loading, setLoading] = useState(() => !!localStorage.getItem('token'));
   const navigate = useNavigate();
 
-  // Validar token real contra el backend al iniciar
   useEffect(() => {
     const validateToken = async () => {
       if (!token) {
@@ -22,13 +31,13 @@ export const AuthProvider = ({ children }) => {
 
       setLoading(true);
       try {
-        const response = await fetch(`${API_BASE_URL}/api/auth/me`, {
+        const response = await fetch(apiUrl('/api/auth/me'), {
           headers: { 'Authorization': `Bearer ${token}` }
         });
 
         if (!response.ok) {
           const body = await response.text();
-          console.warn('Token validation failed', response.status, body);
+          devLog('TOKEN validation failed', response.status, body);
           throw new Error('Token inválido');
         }
 
@@ -36,7 +45,7 @@ export const AuthProvider = ({ children }) => {
         setUser({ username: data.username });
         localStorage.setItem('token', token);
       } catch (error) {
-        console.error('Token validation error', error);
+        devLog('TOKEN validation error', error);
         setToken(null);
         setUser(null);
         localStorage.removeItem('token');
@@ -55,7 +64,7 @@ export const AuthProvider = ({ children }) => {
 
     setLoading(true);
     try {
-      const response = await fetch(`${API_BASE_URL}/api/auth/login`, {
+      const response = await fetch(apiUrl('/api/auth/login'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
         body: formData,
@@ -63,13 +72,13 @@ export const AuthProvider = ({ children }) => {
 
       if (!response.ok) {
         const body = await response.text();
-        console.warn('Login failed', response.status, body);
+        devLog('LOGIN failed', response.status);
         return false;
       }
 
       const data = await response.json();
       if (!data.access_token) {
-        console.warn('Login response missing access token', data);
+        devLog('LOGIN response missing access token');
         return false;
       }
 
@@ -78,7 +87,7 @@ export const AuthProvider = ({ children }) => {
       setUser({ username: data.username || username });
       return true;
     } catch (error) {
-      console.error('Login error', error);
+      devLog('LOGIN error', error);
       return false;
     } finally {
       setLoading(false);

@@ -1,7 +1,9 @@
+from datetime import datetime, timezone, timedelta
 from fastapi import APIRouter, Depends, Query
 from fastapi.responses import JSONResponse
 from sqlalchemy.orm import Session
-from database import get_security_db, AuditLog
+from sqlalchemy import func
+from database import get_security_db, AuditLog, SecurityLog, BlockedIP
 from auth import get_current_user, require_role
 from audit_logger import write_audit_log, read_audit_logs, get_available_dates
 
@@ -48,6 +50,45 @@ def get_audit_dates(
 ):
     """Lista las fechas disponibles de logs de auditoría."""
     return {"dates": get_available_dates()}
+
+
+@router.get("/report")
+def get_audit_report(
+    days: int = Query(7, description="Ventana de tiempo en días"),
+    current_user = Depends(require_role("admin")),
+    db: Session = Depends(get_security_db),
+):
+    """Genera un reporte de auditoría resumido: eventos, alertas, bloqueos."""
+    since = datetime.now(timezone.utc) - timedelta(days=days)
+
+    total_events = db.query(func.count(AuditLog.id)).filter(AuditLog.timestamp >= since).scalar() or 0
+    total_alerts = db.query(func.count(SecurityLog.id)).filter(
+        SecurityLog.timestamp >= since,
+        SecurityLog.attack_type.notin_(["Normal", "Unknown", "Auto-Unblock"]),
+    ).scalar() or 0
+    total_blocks = db.query(func.count(BlockedIP.id)).filter(BlockedIP.blocked_at >= since).scalar() or 0
+    unique_ips = db.query(func.count(func.distinct(SecurityLog.source_ip))).filter(
+        SecurityLog.timestamp >= since,
+        SecurityLog.attack_type.notin_(["Normal", "Unknown"]),
+    ).scalar() or 0
+
+    top_attacks = db.query(
+        SecurityLog.attack_type, func.count(SecurityLog.id).label("count")
+    ).filter(
+        SecurityLog.timestamp >= since,
+        SecurityLog.attack_type.notin_(["Normal", "Unknown"]),
+    ).group_by(SecurityLog.attack_type).order_by(func.count(SecurityLog.id).desc()).limit(5).all()
+
+    return {
+        "period_days": days,
+        "since": since.isoformat(),
+        "total_events": total_events,
+        "total_alerts": total_alerts,
+        "total_blocks": total_blocks,
+        "unique_attack_ips": unique_ips,
+        "top_attacks": [{"attack_type": a, "count": c} for a, c in top_attacks],
+        "generated_at": datetime.now(timezone.utc).isoformat(),
+    }
 
 
 def record_audit(db: Session, username: str, action: str, target: str, details: str = ""):

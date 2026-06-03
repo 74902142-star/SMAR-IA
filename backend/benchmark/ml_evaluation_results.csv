@@ -1,0 +1,12 @@
+class,precision,recall,f1_score
+Brute Force,1.0,1.0,1.0
+DDoS SYN Flood,1.0,1.0,1.0
+DDoS UDP Flood,1.0,1.0,1.0
+DHCP Spoofing,1.0,1.0,1.0
+DHCP Starvation,1.0,1.0,1.0
+Normal,1.0,1.0,1.0
+Port Scanning,1.0,1.0,1.0
+Sniffing Pasivo,1.0,1.0,1.0
+,,,
+MACRO_AVG,,,
+overall,1.0,1.0,1.0

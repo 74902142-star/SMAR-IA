@@ -1,7 +1,8 @@
 import { useState, useEffect, useContext, useCallback } from 'react';
 import { AuthContext } from '../context/AuthContext';
-import { Plus, Trash2, Edit3, Save, X, ToggleLeft, ToggleRight, AlertTriangle, Shield } from 'lucide-react';
+import { Plus, Trash2, Edit3, Save, ToggleLeft, ToggleRight, Shield } from 'lucide-react';
 import { toast } from 'react-toastify';
+import { apiUrl } from '../api';
 
 const ACTIONS = ['BLOCK', 'ALERT'];
 const CONDITIONS_HELP = `Ejemplos:
@@ -9,6 +10,25 @@ const CONDITIONS_HELP = `Ejemplos:
 - attack_type == 'DDoS SYN Flood' or attack_type == 'DDoS UDP Flood'
 - confidence > 0.95
 - ip == '192.168.1.100'`;
+
+const VALID_VARS = ['attack_type', 'confidence', 'ip'];
+
+function validateCondition(condition) {
+  if (!condition || condition.trim() === '') return 'La condición está vacía';
+  if (condition.includes('__') || condition.includes('import') || condition.includes('exec'))
+    return 'Caracteres no permitidos';
+  const vars = condition.match(/[a-zA-Z_][a-zA-Z0-9_]*/g) || [];
+  for (const v of vars) {
+    if (!VALID_VARS.includes(v) && !['and', 'or', 'not', 'in', 'is'].includes(v) && v !== v.toUpperCase() && !v.startsWith('_'))
+      return `Variable desconocida: "${v}". Use solo: ${VALID_VARS.join(', ')}`;
+  }
+  try {
+    new Function(`"use strict"; return (${condition.replace(/attack_type|confidence|ip/g, '"test"')});`);
+  } catch (e) {
+    return `Error de sintaxis: ${e.message}`;
+  }
+  return null;
+}
 
 export default function RuleManager() {
   const { token } = useContext(AuthContext);
@@ -20,7 +40,7 @@ export default function RuleManager() {
 
   const fetchRules = useCallback(async () => {
     try {
-      const r = await fetch('http://localhost:8000/api/rules/', {
+      const r = await fetch(apiUrl('/api/rules/'), {
         headers: { Authorization: `Bearer ${token}` },
       });
       if (r.ok) setRules(await r.json());
@@ -31,10 +51,12 @@ export default function RuleManager() {
 
   const handleSave = async () => {
     if (!form.name || !form.condition) { toast.error('Nombre y condición son requeridos'); return; }
+    const err = validateCondition(form.condition);
+    if (err) { toast.error(err); return; }
     try {
       const url = editing
-        ? `http://localhost:8000/api/rules/${editing}`
-        : 'http://localhost:8000/api/rules/';
+        ? apiUrl(`/api/rules/${editing}`)
+        : apiUrl('/api/rules/');
       const method = editing ? 'PUT' : 'POST';
       const r = await fetch(url, {
         method,
@@ -55,7 +77,7 @@ export default function RuleManager() {
 
   const handleDelete = async (id) => {
     try {
-      const r = await fetch(`http://localhost:8000/api/rules/${id}`, {
+      const r = await fetch(apiUrl(`/api/rules/${id}`), {
         method: 'DELETE',
         headers: { Authorization: `Bearer ${token}` },
       });
@@ -65,7 +87,7 @@ export default function RuleManager() {
 
   const handleToggle = async (rule) => {
     try {
-      const r = await fetch(`http://localhost:8000/api/rules/${rule.id}`, {
+      const r = await fetch(apiUrl(`/api/rules/${rule.id}`), {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
         body: JSON.stringify({ enabled: !rule.enabled }),
@@ -80,15 +102,15 @@ export default function RuleManager() {
     setShowForm(true);
   };
 
-  const testCondition = async () => {
+  const testCondition = () => {
     if (!form.condition) { toast.error('Escribe una condición primero'); return; }
-    setTestResult('probando...');
-    try {
-      const r = await fetch('http://localhost:8000/api/health');
-      if (r.ok) setTestResult('✓ Sintaxis válida (la condición se evalúa en el motor de reglas)');
-      else setTestResult('✗ Error de conexión');
-    } catch { setTestResult('✗ No se pudo conectar'); }
-    setTimeout(() => setTestResult(null), 3000);
+    const err = validateCondition(form.condition);
+    if (err) {
+      setTestResult(`✗ ${err}`);
+    } else {
+      setTestResult('✓ Sintaxis válida');
+    }
+    setTimeout(() => setTestResult(null), 4000);
   };
 
   return (
@@ -104,7 +126,7 @@ export default function RuleManager() {
       </div>
 
       {showForm && (
-        <div style={{ background: 'rgba(0,0,0,0.25)', border: '1px solid var(--border-default)', borderRadius: 'var(--radius-md)', padding: 24, marginBottom: 24 }}>
+        <div className="rule-form-panel">
           <h3 style={{ fontSize: '0.85rem', marginBottom: 16, color: 'var(--text-white)', letterSpacing: '1px' }}>{editing ? 'EDITAR REGLA' : 'NUEVA REGLA'}</h3>
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
             <div>
@@ -114,7 +136,7 @@ export default function RuleManager() {
             <div>
               <label style={{ fontSize: '0.7rem', color: 'var(--text-muted)', display: 'block', marginBottom: 6 }}>ACCIÓN</label>
               <select className="terminal-input" value={form.action} onChange={e => setForm({ ...form, action: e.target.value })}>
-                {ACTIONS.map(a => <option key={a} value={a}>{a === 'BLOCK' ? '🛑 BLOQUEAR' : '⚠️ ALERTAR'}</option>)}
+                {ACTIONS.map(a => <option key={a} value={a}>{a === 'BLOCK' ? 'BLOQUEAR' : 'ALERTAR'}</option>)}
               </select>
             </div>
             <div style={{ gridColumn: '1 / -1' }}>
@@ -122,7 +144,7 @@ export default function RuleManager() {
               <textarea className="terminal-input" value={form.condition} onChange={e => setForm({ ...form, condition: e.target.value })} placeholder="attack_type == 'Brute Force' and confidence > 0.8" rows={2} style={{ fontFamily: "'Space Mono',monospace", fontSize: '0.78rem' }} />
               <details style={{ marginTop: 4, fontSize: '0.7rem', color: 'var(--text-muted)' }}>
                 <summary style={{ cursor: 'pointer' }}>Variables disponibles</summary>
-                <pre style={{ marginTop: 4, background: 'rgba(0,0,0,0.3)', padding: 8, borderRadius: 'var(--radius-sm)', fontSize: '0.7rem', whiteSpace: 'pre-wrap' }}>{CONDITIONS_HELP}</pre>
+                <pre style={{ marginTop: 4, background: 'var(--input-bg)', padding: 8, borderRadius: 'var(--radius-sm)', fontSize: '0.7rem', whiteSpace: 'pre-wrap' }}>{CONDITIONS_HELP}</pre>
               </details>
             </div>
             <div>
@@ -151,12 +173,7 @@ export default function RuleManager() {
       ) : (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
           {rules.map(rule => (
-            <div key={rule.id} style={{
-              background: rule.enabled ? 'rgba(0,0,0,0.2)' : 'rgba(0,0,0,0.1)',
-              border: `1px solid ${rule.enabled ? 'var(--border-default)' : 'var(--border-subtle)'}`,
-              borderRadius: 'var(--radius-sm)', padding: '14px 18px',
-              opacity: rule.enabled ? 1 : 0.5,
-            }}>
+            <div key={rule.id} className={`rule-card ${rule.enabled ? '' : 'disabled'}`}>
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                 <div style={{ flex: 1 }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 6 }}>
@@ -165,7 +182,7 @@ export default function RuleManager() {
                     {!rule.enabled && <span className="badge-pill" style={{ background: 'rgba(100,100,100,0.2)', color: 'var(--text-muted)', fontSize: '0.6rem' }}>DESACTIVADA</span>}
                   </div>
                   <div style={{ fontFamily: "'Space Mono',monospace", fontSize: '0.75rem', color: 'var(--cyan)', marginBottom: 4 }}>if ({rule.condition})</div>
-                  <div style={{ fontSize: '0.68rem', color: 'var(--text-muted)' }}>Duración: {rule.duration_minutes || 'Permanente'} · Creada: {new Date(rule.id * 1000).toLocaleDateString() || '—'}</div>
+                  <div style={{ fontSize: '0.68rem', color: 'var(--text-muted)' }}>Duración: {rule.duration_minutes || 'Permanente'} · ID: #{rule.id}</div>
                 </div>
                 <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
                   <button className="btn-ghost-blue" style={{ padding: '6px 10px' }} onClick={() => handleToggle(rule)} title={rule.enabled ? 'Desactivar' : 'Activar'}>

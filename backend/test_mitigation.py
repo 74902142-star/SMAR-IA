@@ -20,21 +20,20 @@ def test_auto_block_logic():
     db = SecuritySessionLocal()
     # Simulamos una IP bloqueada
     from routers.mitigation import record_block
-    record_block(db, "10.10.10.10", method="TEST", reason="Test logic")
+    record_block(db, "10.10.10.10", method="TEST", reason="Test logic", action_taken="TEST")
     
     blocked = db.query(BlockedIP).filter(BlockedIP.ip == "10.10.10.10").first()
     assert blocked is not None
     assert blocked.is_active == 1
     db.close()
 
-def test_firewall_dry_run():
+def test_firewall_dry_run(monkeypatch):
     """Verifica que el módulo de firewall respeta el modo DRY_RUN."""
-    from mitigation.firewall import apply_iptables_block
-    from config import DRY_RUN
-    
-    assert DRY_RUN is True # Asegurarse que está en True para el test
-    result = apply_iptables_block("8.8.8.8")
-    assert result is True # No debe lanzar error de permisos
+    import firewall as fw_mod
+    monkeypatch.setattr(fw_mod, "DRY_RUN", True)
+
+    result = fw_mod.apply_iptables_block("8.8.8.8")
+    assert result == 0.0  # En dry-run retorna 0.0 sin ejecutar iptables
 
 if __name__ == "__main__":
     # Ejecutar con: pytest test_mitigation.py

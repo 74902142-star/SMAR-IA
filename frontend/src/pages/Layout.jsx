@@ -1,10 +1,12 @@
-import { Outlet, NavLink, useLocation } from 'react-router-dom';
-import { useContext, useState, useEffect } from 'react';
+import { Outlet, NavLink, useLocation, useNavigate } from 'react-router-dom';
+import { useContext, useState, useEffect, useRef } from 'react';
 import { AuthContext } from '../context/AuthContext';
 import { ThemeContext } from '../context/ThemeContext';
+import { apiUrl, apiGet } from '../api';
 import {
   LayoutDashboard, Bell, Shield, Settings, LogOut,
-  Terminal, Activity, Search, Network, Moon, Sun, ScrollText
+  Terminal, Activity, Search, Network, Moon, Sun, ScrollText,
+  X, ExternalLink, User, ChevronDown, Filter
 } from 'lucide-react';
 
 
@@ -18,15 +20,22 @@ const NAV_ITEMS = [
 ];
 
 export default function Layout() {
-  const { logout, user } = useContext(AuthContext);
+  const { logout, user, token } = useContext(AuthContext);
   const { theme, toggleTheme } = useContext(ThemeContext);
   const location = useLocation();
+  const navigate = useNavigate();
   const [systemHealth, setSystemHealth] = useState({ status: 'checking', ml_loaded: false, uptime: '000:00:00' });
   const [alertsCount, setAlertsCount] = useState(0);
+  const [alertsList, setAlertsList] = useState([]);
+  const [showNotifPanel, setShowNotifPanel] = useState(false);
+  const [showUserMenu, setShowUserMenu] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
+  const notifRef = useRef(null);
+  const userRef = useRef(null);
 
   useEffect(() => {
     const fetchHealth = () => {
-      fetch('http://localhost:8000/api/health')
+      fetch(apiUrl('/api/health'))
         .then(r => r.ok ? r.json() : null)
         .then(d => {
           if (d) setSystemHealth({ status: d.status, ml_loaded: d.components?.ml_model?.status === 'loaded', uptime: d.uptime || '000:00:00' });
@@ -40,15 +49,39 @@ export default function Layout() {
 
   useEffect(() => {
     const fetch_ = () => {
-      fetch('http://localhost:8000/api/stats/alerts-count')
+      fetch(apiUrl('/api/stats/alerts-count'))
         .then(r => r.ok ? r.json() : null)
-        .then(d => { if (d) setAlertsCount(d.pending_count || 0); })
+        .then(d => {
+          if (d) {
+            setAlertsCount(d.pending_count || 0);
+            setAlertsList(d.recent_alerts || []);
+          }
+        })
         .catch(() => {});
     };
     fetch_();
     const iv = setInterval(fetch_, 10000);
     return () => clearInterval(iv);
   }, []);
+
+  useEffect(() => {
+    function handleClick(e) {
+      if (notifRef.current && !notifRef.current.contains(e.target)) setShowNotifPanel(false);
+      if (userRef.current && !userRef.current.contains(e.target)) setShowUserMenu(false);
+    }
+    document.addEventListener('mousedown', handleClick);
+    return () => document.removeEventListener('mousedown', handleClick);
+  }, []);
+
+  const handleSearch = (e) => {
+    e.preventDefault();
+    if (searchQuery.trim()) {
+      navigate(`/logs?search=${encodeURIComponent(searchQuery.trim())}`);
+      setSearchQuery('');
+    }
+  };
+
+  const netDiagramUrl = `https://www.google.com/maps?q=${systemHealth.status === 'online' ? 'SmarIA+Network' : ''}`;
 
   const dotClass = systemHealth.status === 'online' ? 'green' : systemHealth.status === 'degraded' ? 'yellow' : systemHealth.status === 'offline' ? 'red' : '';
   const statusLabel = systemHealth.status === 'online' ? 'EN LÍNEA' : systemHealth.status === 'degraded' ? 'PARCIAL' : systemHealth.status === 'offline' ? 'OFFLINE' : 'VERIFICANDO';
@@ -112,10 +145,11 @@ export default function Layout() {
         <header className="app-header">
           <span className="app-header-title">{currentTitle}</span>
 
-          <div className="app-header-search">
+          <form className="app-header-search" onSubmit={handleSearch}>
             <Search size={15} className="search-icon" />
-            <input type="text" placeholder="Buscar IPs, eventos..." />
-          </div>
+            <input type="text" placeholder="Buscar IPs, eventos..."
+              value={searchQuery} onChange={e => setSearchQuery(e.target.value)} />
+          </form>
 
           <div style={{marginLeft:'auto', display:'flex', alignItems:'center', gap:10}}>
             <div className="header-status-badge">
@@ -126,15 +160,48 @@ export default function Layout() {
             <div className="header-icon-btn" onClick={toggleTheme} title={`Cambiar a tema ${theme === 'dark' ? 'claro' : 'oscuro'}`}>
               {theme === 'dark' ? <Sun size={16} /> : <Moon size={16} />}
             </div>
-            <div className="header-icon-btn">
+            <div className="header-icon-btn" onClick={() => window.open(netDiagramUrl, '_blank')} title="Ver red">
               <Network size={16} />
             </div>
-            <div className="header-icon-btn" style={{position:'relative'}}>
+            <div className="header-icon-btn" style={{position:'relative'}} ref={notifRef} onClick={() => setShowNotifPanel(p => !p)}>
               <Bell size={16} />
               {alertsCount > 0 && <span className="header-notif-count">{alertsCount > 9 ? '9+' : alertsCount}</span>}
+              {showNotifPanel && (
+                <div className="dropdown-panel notif-panel">
+                  <div className="dropdown-panel-header">
+                    <span>Notificaciones</span>
+                    <X size={14} onClick={() => setShowNotifPanel(false)} style={{cursor:'pointer'}} />
+                  </div>
+                  {alertsList.length > 0 ? alertsList.slice(0, 5).map((a, i) => (
+                    <div key={i} className="dropdown-panel-item">
+                      <div className="dropdown-panel-item-title">{a.attack_type || 'Evento'}</div>
+                      <div className="dropdown-panel-item-sub">{a.source_ip} · {a.timestamp ? new Date(a.timestamp).toLocaleTimeString('es-PE', {hour12:false}) : ''}</div>
+                    </div>
+                  )) : (
+                    <div className="dropdown-panel-item" style={{color:'var(--text-muted)'}}>Sin notificaciones recientes</div>
+                  )}
+                  <div className="dropdown-panel-footer" onClick={() => { navigate('/traffic'); setShowNotifPanel(false); }}>
+                    Ver todas las alertas
+                  </div>
+                </div>
+              )}
             </div>
-            <div className="header-avatar" title={user?.username || 'admin'}>
+            <div className="header-avatar" ref={userRef} onClick={() => setShowUserMenu(p => !p)} style={{cursor:'pointer'}}>
               {(user?.username || 'A').charAt(0).toUpperCase()}
+              {showUserMenu && (
+                <div className="dropdown-panel user-menu">
+                  <div className="dropdown-panel-header">
+                    <User size={14} />
+                    <span>{user?.username || 'admin'}</span>
+                  </div>
+                  <div className="dropdown-panel-item" onClick={() => { navigate('/settings'); setShowUserMenu(false); }}>
+                    Configuración
+                  </div>
+                  <div className="dropdown-panel-item" onClick={() => { logout(); setShowUserMenu(false); }}>
+                    Cerrar Sesión
+                  </div>
+                </div>
+              )}
             </div>
           </div>
         </header>

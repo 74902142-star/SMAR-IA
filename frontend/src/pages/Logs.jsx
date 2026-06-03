@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { Row, Col } from 'react-bootstrap';
-import { Terminal, Download, Maximize2, Cpu, Activity, Server, CheckCircle2 } from 'lucide-react';
+import { Terminal, Download, Maximize2, Minimize2, Cpu, Activity, Server, CheckCircle2 } from 'lucide-react';
+import { apiUrl, wsUrl } from '../api';
 
 
 export default function Logs() {
@@ -8,13 +9,15 @@ export default function Logs() {
   const [filter, setFilter] = useState('ALL');
   const [categories, setCategories] = useState({ network: true, security: true, ai: true });
   const [stats, setStats] = useState({ total: 0, critical: 0 });
+  const [fullscreen, setFullscreen] = useState(false);
   const terminalEndRef = useRef(null);
   const ws = useRef(null);
+  const terminalRef = useRef(null);
 
   const scrollToBottom = () => terminalEndRef.current?.scrollIntoView({ behavior: 'smooth' });
 
   useEffect(() => {
-    fetch('http://localhost:8000/api/logs?limit=60')
+    fetch(apiUrl('/api/logs?limit=60'))
       .then(r => r.json())
       .then(data => {
         const formatted = data.map(log => ({
@@ -30,7 +33,10 @@ export default function Logs() {
       })
       .catch(() => {});
 
-    ws.current = new WebSocket('ws://localhost:8000/ws');
+    ws.current = new WebSocket(wsUrl('/ws'));
+    ws.current.onopen = () => {
+      ws.current.send(JSON.stringify({}));
+    };
     ws.current.onmessage = (event) => {
       const data = JSON.parse(event.data);
       if (data.type !== 'traffic_update') return;
@@ -51,9 +57,28 @@ export default function Logs() {
 
   useEffect(() => { scrollToBottom(); }, [logs]);
 
+  const handleDownload = () => {
+    const content = filtered.map(l => `[${l.timestamp}] [${l.category}] ${l.message}`).join('\n');
+    const blob = new Blob([content], { type: 'text/plain' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url; a.download = `smaria_logs_${new Date().toISOString().slice(0,10)}.txt`;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
+  const toggleFullscreen = () => {
+    setFullscreen(f => !f);
+  };
+
   const filtered = logs.filter(l => {
     if (filter === 'CRITICAL') return l.isCritical;
     if (filter === 'NORMAL')   return !l.isCritical;
+    return true;
+  }).filter(l => {
+    if (!categories.network && l.category === 'NW_TRAFFIC') return false;
+    if (!categories.security && l.category === 'SEC_AUDIT') return false;
+    if (!categories.ai && l.category === 'CRITICAL_ERR') return false;
     return true;
   });
 
@@ -63,9 +88,85 @@ export default function Logs() {
     return 'var(--cyan)';
   };
 
+  const terminalContent = (
+    <div className="terminal-window" ref={terminalRef}>
+      <div className="terminal-titlebar">
+        <div className="terminal-dots">
+          <span className="dot-r" />
+          <span className="dot-y" />
+          <span className="dot-g" />
+        </div>
+        <div className="terminal-path">
+          <Terminal size={13} />
+          <span style={{ color: 'var(--blue)' }}>root</span>
+          <span className="sep">@</span>
+          <span>smar-ia</span>
+          <span className="sep">:</span>
+          <span style={{ color: 'var(--emerald)' }}>~/_logs/live</span>
+        </div>
+        <div className="terminal-actions">
+          <Download size={14} onClick={handleDownload} style={{cursor:'pointer'}} />
+          {fullscreen
+            ? <Minimize2 size={14} onClick={toggleFullscreen} style={{cursor:'pointer'}} />
+            : <Maximize2 size={14} onClick={toggleFullscreen} style={{cursor:'pointer'}} />
+          }
+        </div>
+      </div>
+
+      <div className="terminal-body">
+        <div className="log-entry" style={{ marginBottom: 8, paddingBottom: 8, borderBottom: '1px solid var(--border-subtle)' }}>
+          <span className="log-time" style={{ color: 'var(--emerald)' }}>SMAR-IA</span>
+          <span className="log-msg" style={{ color: 'var(--text-muted)' }}>System log stream initialized · filter: {filter}</span>
+        </div>
+
+        {filtered.map((log, i) => (
+          <div key={`${log.timestamp}-${i}`} className={`log-entry ${log.isCritical ? 'critical' : ''}`}>
+            <span className="log-time">[{log.timestamp}]</span>
+            <span
+              className="log-cat-badge badge-pill"
+              style={{
+                background: log.isCritical ? 'rgba(244,63,94,0.1)' : 'rgba(6,182,212,0.1)',
+                color: catColor(log.category),
+                border: `1px solid ${log.isCritical ? 'rgba(244,63,94,0.25)' : 'rgba(6,182,212,0.25)'}`,
+                fontSize: '0.58rem', padding: '1px 7px', flexShrink: 0,
+              }}
+            >
+              {log.category}
+            </span>
+            <span className="log-msg">{log.message}</span>
+          </div>
+        ))}
+
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 10, color: 'var(--text-muted)', fontFamily: "'Space Mono',monospace", fontSize: '0.72rem' }}>
+          <span className="blink-cursor" />
+          WAITING FOR DATA PACKETS...
+        </div>
+        <div ref={terminalEndRef} />
+      </div>
+
+      <div className="terminal-statusbar">
+        <div style={{ display: 'flex', gap: 20 }}>
+          <span style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+            <span className="status-dot green pulse" /> LIVE FEED
+          </span>
+          <span style={{ color: 'rgba(255,255,255,0.2)' }}>·</span>
+          <span>VERBOSE MODE: <span style={{ color: 'var(--text-muted)' }}>OFF</span></span>
+        </div>
+        <span>LINES: <span style={{ color: 'var(--text-white)' }}>{filtered.length}</span></span>
+      </div>
+    </div>
+  );
+
+  if (fullscreen) {
+    return (
+      <div style={{ position: 'fixed', inset: 0, zIndex: 9999, background: 'var(--bg-base)', padding: 12 }}>
+        {terminalContent}
+      </div>
+    );
+  }
+
   return (
     <div className="logs-page">
-      {/* ── Header ── */}
       <div style={{ display: 'flex', alignItems: 'flex-end', justifyContent: 'space-between' }}>
         <div className="page-header" style={{ marginBottom: 0 }}>
           <h1>System Log Stream</h1>
@@ -79,12 +180,7 @@ export default function Logs() {
           <select
             value={filter}
             onChange={e => setFilter(e.target.value)}
-            style={{
-              background: 'rgba(0,0,0,0.3)', border: '1px solid var(--border-default)',
-              borderRadius: 'var(--radius-sm)', color: 'var(--text-primary)',
-              padding: '7px 12px', fontSize: '0.78rem', outline: 'none',
-              fontFamily: "'Inter',sans-serif", cursor: 'pointer',
-            }}
+            className="logs-filter-select"
           >
             <option value="ALL">TODOS LOS EVENTOS</option>
             <option value="CRITICAL">SOLO CRÍTICOS</option>
@@ -94,10 +190,8 @@ export default function Logs() {
       </div>
 
       <Row className="g-3">
-        {/* ── Left sidebar stats ── */}
         <Col lg={3}>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-            {/* Stat cards */}
             {[
               { label: 'TOTAL EVENTOS / SESIÓN', value: stats.total.toLocaleString(), color: 'blue' },
               { label: 'ANOMALÍAS CRÍTICAS',     value: String(stats.critical),       color: 'rose' },
@@ -109,21 +203,18 @@ export default function Logs() {
               </div>
             ))}
 
-            {/* Topology widget */}
             <div className="widget" style={{ overflow: 'hidden' }}>
               <div style={{ padding: '12px 14px', borderBottom: '1px solid var(--border-subtle)' }}>
                 <div style={{ fontSize: '0.65rem', letterSpacing: '1.5px', color: 'var(--amber)', fontWeight: 700, marginBottom: 2 }}>NETWORK_TOPOLOGY</div>
                 <div style={{ fontSize: '0.8rem', fontWeight: 600 }}>Sub-Sector 7-B Status</div>
               </div>
-              <div style={{ height: 80, position: 'relative', overflow: 'hidden', background: 'rgba(0,0,0,0.2)' }}>
-                {/* Animated scan line */}
+              <div style={{ height: 80, position: 'relative', overflow: 'hidden', background: 'var(--input-bg)' }}>
                 <div style={{
                   position: 'absolute', left: 0, right: 0, height: '1px',
                   background: 'linear-gradient(90deg, transparent, var(--blue), transparent)',
                   animation: 'scanline 2.5s linear infinite',
                 }} />
                 <style>{`@keyframes scanline { 0%{top:0%} 100%{top:100%} }`}</style>
-                {/* Grid */}
                 <div style={{
                   position: 'absolute', inset: 0, opacity: 0.15,
                   backgroundImage: 'linear-gradient(var(--blue) 1px, transparent 1px), linear-gradient(90deg, var(--blue) 1px, transparent 1px)',
@@ -132,7 +223,6 @@ export default function Logs() {
               </div>
             </div>
 
-            {/* Log categories */}
             <div className="widget">
               <div className="widget-header">
                 <div className="widget-title">Categorías</div>
@@ -163,79 +253,11 @@ export default function Logs() {
           </div>
         </Col>
 
-        {/* ── Terminal ── */}
         <Col lg={9}>
-          <div className="terminal-window">
-            {/* Title bar */}
-            <div className="terminal-titlebar">
-              <div className="terminal-dots">
-                <span className="dot-r" />
-                <span className="dot-y" />
-                <span className="dot-g" />
-              </div>
-              <div className="terminal-path">
-                <Terminal size={13} />
-                <span style={{ color: 'var(--blue)' }}>root</span>
-                <span className="sep">@</span>
-                <span>smar-ia</span>
-                <span className="sep">:</span>
-                <span style={{ color: 'var(--emerald)' }}>~/_logs/live</span>
-              </div>
-              <div className="terminal-actions">
-                <Download size={14} />
-                <Maximize2 size={14} />
-              </div>
-            </div>
-
-            {/* Log body */}
-            <div className="terminal-body">
-              {/* Init lines */}
-              <div className="log-entry" style={{ marginBottom: 8, paddingBottom: 8, borderBottom: '1px solid var(--border-subtle)' }}>
-                <span className="log-time" style={{ color: 'var(--emerald)' }}>SMAR-IA</span>
-                <span className="log-msg" style={{ color: 'var(--text-muted)' }}>System log stream initialized · filter: {filter}</span>
-              </div>
-
-              {filtered.map((log, i) => (
-                <div key={i} className={`log-entry ${log.isCritical ? 'critical' : ''}`}>
-                  <span className="log-time">[{log.timestamp}]</span>
-                  <span
-                    className="log-cat-badge badge-pill"
-                    style={{
-                      background: log.isCritical ? 'rgba(244,63,94,0.1)' : 'rgba(6,182,212,0.1)',
-                      color: catColor(log.category),
-                      border: `1px solid ${log.isCritical ? 'rgba(244,63,94,0.25)' : 'rgba(6,182,212,0.25)'}`,
-                      fontSize: '0.58rem', padding: '1px 7px', flexShrink: 0,
-                    }}
-                  >
-                    {log.category}
-                  </span>
-                  <span className="log-msg">{log.message}</span>
-                </div>
-              ))}
-
-              <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 10, color: 'var(--text-muted)', fontFamily: "'Space Mono',monospace", fontSize: '0.72rem' }}>
-                <span className="blink-cursor" />
-                WAITING FOR DATA PACKETS...
-              </div>
-              <div ref={terminalEndRef} />
-            </div>
-
-            {/* Status bar */}
-            <div className="terminal-statusbar">
-              <div style={{ display: 'flex', gap: 20 }}>
-                <span style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                  <span className="status-dot green pulse" /> LIVE FEED
-                </span>
-                <span style={{ color: 'rgba(255,255,255,0.2)' }}>·</span>
-                <span>VERBOSE MODE: <span style={{ color: 'var(--text-muted)' }}>OFF</span></span>
-              </div>
-              <span>LINES: <span style={{ color: 'var(--text-white)' }}>{filtered.length}</span></span>
-            </div>
-          </div>
+          {terminalContent}
         </Col>
       </Row>
 
-      {/* ── Bottom info bar ── */}
       <Row className="g-3">
         {[
           { icon: Cpu,          label: 'MEMORY USAGE',  value: '4.2 GB / 32 GB', color: 'blue' },

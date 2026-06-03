@@ -4,11 +4,11 @@ Endpoints de salud, estadísticas y métricas (ISO A.8.16).
 """
 from fastapi import APIRouter, Depends, Response
 from sqlalchemy.orm import Session
-from sqlalchemy import func, case, extract
+from sqlalchemy import func
 from database import get_security_db, get_traffic_db, SecurityLog, NetworkTraffic, BlockedIP, Whitelist
 from ml_service import ml_service
 from config import APP_VERSION, APP_NAME, DRY_RUN, AUTO_BLOCK_THRESHOLD
-from datetime import datetime, timedelta
+from datetime import datetime, timezone, timedelta
 import time
 import csv
 import io
@@ -66,7 +66,7 @@ def health_check():
         "status": "online" if all_ok else "degraded",
         "app": APP_NAME,
         "version": APP_VERSION,
-        "timestamp": datetime.utcnow().isoformat() + 'Z',
+        "timestamp": datetime.now(timezone.utc).isoformat() + 'Z',
         "uptime": f"{hours:03d}:{minutes:02d}:{seconds:02d}",
         "uptime_seconds": round(uptime_seconds),
         "components": {
@@ -91,7 +91,7 @@ def get_system_stats(db: Session = Depends(get_security_db)):
     Estadísticas globales del sistema para el Dashboard y TrafficMonitor.
     Combina datos de seguridad, modelo ML y recursos del sistema.
     """
-    now = datetime.utcnow()
+    now = datetime.now(timezone.utc)
     last_24h = now - timedelta(hours=24)
 
     # ── Conteos generales ────────────────────────────────────────
