@@ -39,6 +39,10 @@ ml_pipeline/venv/
 # Test artifacts
 backend/test_security.db
 backend/test_traffic.db
+.coverage
+coverage.xml
+backend/.coverage
+backend/coverage.xml
 .pytest_cache/
 
 # Docker

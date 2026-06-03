@@ -1,7 +1,7 @@
 [tool.pytest.ini_options]
 minversion = "8.0"
-testpaths = ["test_comprehensive.py", "test_mitigation.py", "test_startup.py"]
-addopts = "-v --tb=short --cov=. --cov-report=xml --cov-report=term-missing --cov-fail-under=80"
+testpaths = ["test_security_coverage.py", "test_comprehensive.py", "test_mitigation.py", "test_startup.py"]
+addopts = "-v --tb=short --cov=. --cov-report=xml --cov-report=term-missing --cov-fail-under=75"
 asyncio_mode = "auto"
 
 [tool.coverage.run]

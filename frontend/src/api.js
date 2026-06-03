@@ -1,6 +1,8 @@
 const API_BASE = import.meta.env.VITE_API_BASE_URL || 'http://127.0.0.1:8000';
 const WS_BASE = API_BASE.replace(/^http/, 'ws');
 
+export function getApiBase() { return API_BASE; }
+
 export function apiUrl(path) {
   return `${API_BASE}${path}`;
 }

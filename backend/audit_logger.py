@@ -29,13 +29,15 @@ Formato por evento (Anexo E de la tesis):
 """
 import json
 import hashlib
+import logging
 import os
 import uuid
 from datetime import datetime, timezone
 
+logger = logging.getLogger("smar-ia-audit")
 
 LOGS_DIR = os.path.join(os.path.dirname(__file__), "logs")
-os.makedirs(LOGS_DIR, exist_ok=True)
+os.makedirs(LOGS_DIR, mode=0o750, exist_ok=True)
 
 
 def _get_log_path(date_str: str = None) -> str:
@@ -44,8 +46,15 @@ def _get_log_path(date_str: str = None) -> str:
     return os.path.join(LOGS_DIR, f"audit_{date_str}.json")
 
 
+def _serialize_safe(obj):
+    """Serializa objetos no estándar de forma segura para el hash de integridad."""
+    if isinstance(obj, (bytes, bytearray)):
+        return obj.hex()
+    raise TypeError(f"Tipo no serializable: {type(obj).__name__}")
+
+
 def _compute_hash(event: dict) -> str:
-    serialized = json.dumps(event, sort_keys=True, default=str)
+    serialized = json.dumps(event, sort_keys=True, default=_serialize_safe)
     return "sha256=" + hashlib.sha256(serialized.encode("utf-8")).hexdigest()
 
 
@@ -64,9 +73,9 @@ def write_audit_log(event_data: dict):
     log_path = _get_log_path()
     try:
         with open(log_path, "a") as f:
-            f.write(json.dumps(event, default=str) + "\n")
+            f.write(json.dumps(event, default=_serialize_safe) + "\n")
     except IOError as e:
-        print(f"[audit_logger] Error escribiendo log: {e}")
+        logger.error("Error escribiendo log de auditoría: %s", e)
 
     return event
 
@@ -84,7 +93,7 @@ def read_audit_logs(date_str: str = None) -> list:
                 if line:
                     events.append(json.loads(line))
     except (IOError, json.JSONDecodeError) as e:
-        print(f"[audit_logger] Error leyendo log: {e}")
+        logger.error("Error leyendo log de auditoría: %s", e)
     return events
 
 

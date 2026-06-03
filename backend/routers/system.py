@@ -6,6 +6,7 @@ from fastapi import APIRouter, Depends, Response
 from sqlalchemy.orm import Session
 from sqlalchemy import func
 from database import get_security_db, get_traffic_db, SecurityLog, NetworkTraffic, BlockedIP, Whitelist
+from auth import get_current_user
 from ml_service import ml_service
 from config import APP_VERSION, APP_NAME, DRY_RUN, AUTO_BLOCK_THRESHOLD
 from datetime import datetime, timezone, timedelta
@@ -36,7 +37,7 @@ def health_check():
         try:
             db.close()
         except Exception:
-            pass
+            logger.debug("Error cerrando conexión DB de seguridad en health check")
 
     # Verificar BD de tráfico
     db_traffic_ok = False
@@ -49,7 +50,7 @@ def health_check():
         try:
             db.close()
         except Exception:
-            pass
+            logger.debug("Error cerrando conexión DB de tráfico en health check")
 
     # Uptime
     uptime_seconds = time.time() - _startup_time
@@ -86,7 +87,7 @@ def health_check():
 
 
 @router.get("/stats")
-def get_system_stats(db: Session = Depends(get_security_db)):
+def get_system_stats(current_user=Depends(get_current_user), db: Session = Depends(get_security_db)):
     """
     Estadísticas globales del sistema para el Dashboard y TrafficMonitor.
     Combina datos de seguridad, modelo ML y recursos del sistema.
@@ -301,18 +302,19 @@ def export_logs(
         writer = csv.writer(output)
         writer.writerow(["id", "timestamp", "source_ip", "destination_ip", "attack_type", "confidence", "action_taken", "iso_control", "latency_ms", "whitelist_hit"])
         for log in logs:
-            writer.writerow([
+            sanitized = [
                 log.id,
                 log.timestamp.isoformat() if log.timestamp else "",
-                log.source_ip,
-                log.destination_ip,
-                log.attack_type,
+                str(log.source_ip or "").replace("=", "").replace("+", "").replace("-", "").replace("@", ""),
+                str(log.destination_ip or "").replace("=", "").replace("+", "").replace("-", "").replace("@", ""),
+                str(log.attack_type or "").replace("=", "").replace("+", "").replace("-", "").replace("@", ""),
                 log.confidence,
-                log.action_taken,
+                str(log.action_taken or "").replace("=", "").replace("+", "").replace("-", "").replace("@", ""),
                 log.iso_control,
                 log.latency_ms or "",
                 1 if log.whitelist_hit else 0,
-            ])
+            ]
+            writer.writerow(sanitized)
         return Response(
             content=output.getvalue(),
             media_type="text/csv",

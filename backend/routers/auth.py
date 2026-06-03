@@ -1,6 +1,6 @@
 from datetime import datetime, timezone, timedelta
 
-from fastapi import APIRouter, Depends, HTTPException, status, Body
+from fastapi import APIRouter, Depends, HTTPException, Request, status, Body
 from fastapi.security import OAuth2PasswordRequestForm
 from jose import JWTError, jwt
 from sqlalchemy.orm import Session
@@ -17,6 +17,13 @@ router = APIRouter(prefix="/api/auth", tags=["auth"])
 # Rate limiting simple en memoria para login
 _login_attempts = {}
 
+def _get_client_ip(request: Request) -> str:
+    """Obtiene IP del cliente desde headers X-Forwarded-For o remote."""
+    forwarded = request.headers.get("X-Forwarded-For")
+    if forwarded:
+        return forwarded.split(",")[0].strip()
+    return request.client.host if request.client else "unknown"
+
 def _check_login_rate_limit(ip: str):
     """Permite 5 intentos por minuto por IP."""
     now = datetime.now(timezone.utc)
@@ -32,9 +39,9 @@ def _check_login_rate_limit(ip: str):
 
 
 @router.post("/login")
-def login_for_access_token(form_data: OAuth2PasswordRequestForm = Depends(), db: Session = Depends(get_security_db)):
+def login_for_access_token(request: Request, form_data: OAuth2PasswordRequestForm = Depends(), db: Session = Depends(get_security_db)):
     from database import User
-    _check_login_rate_limit(form_data.username)
+    _check_login_rate_limit(_get_client_ip(request))
     user = db.query(User).filter(User.username == form_data.username).first()
     if not user or user.is_active != 1 or not verify_password(form_data.password, user.hashed_password):
         raise HTTPException(
@@ -71,7 +78,7 @@ def refresh_token(refresh_token: str = Body(..., embed=True), db: Session = Depe
     if is_token_blacklisted(refresh_token, db):
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Token has been revoked")
     try:
-        payload = jwt.decode(refresh_token, SECRET_KEY, algorithms=[ALGORITHM])
+        payload = jwt.decode(refresh_token, SECRET_KEY, algorithms=[ALGORITHM], audience="smar-ia-api")
         if payload.get("type") != "refresh":
             raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid token type")
         username: str = payload.get("sub")

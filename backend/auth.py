@@ -22,7 +22,7 @@ def verify_password(plain_password: str, hashed_password: str) -> bool:
     """Verifica contraseña contra hash bcrypt."""
     try:
         return bcrypt.checkpw(plain_password.encode("utf-8"), hashed_password.encode("utf-8"))
-    except (ValueError, TypeError):
+    except (ValueError, TypeError, AttributeError):
         return False
 
 
@@ -32,11 +32,14 @@ def get_password_hash(password: str) -> str:
     return bcrypt.hashpw(password.encode("utf-8"), salt).decode("utf-8")
 
 
+JWT_AUDIENCE = "smar-ia-api"
+
+
 def create_access_token(data: dict, expires_delta: Optional[timedelta] = None) -> str:
     """Crea JWT de acceso con expiración."""
     to_encode = data.copy()
     expire = datetime.now(timezone.utc) + (expires_delta or timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES))
-    to_encode.update({"exp": expire, "role": data.get("role", "viewer"), "type": "access"})
+    to_encode.update({"exp": expire, "aud": JWT_AUDIENCE, "role": data.get("role", "viewer"), "type": "access"})
     return jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
 
 
@@ -44,14 +47,14 @@ def create_refresh_token(data: dict) -> str:
     """Crea JWT de refresco con expiración de 7 días."""
     to_encode = data.copy()
     expire = datetime.now(timezone.utc) + timedelta(days=7)
-    to_encode.update({"exp": expire, "type": "refresh", "role": data.get("role", "viewer")})
+    to_encode.update({"exp": expire, "aud": JWT_AUDIENCE, "type": "refresh", "role": data.get("role", "viewer")})
     return jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
 
 
 def logout_token(token: str, db: Session):
     """Añade token a la blacklist persistente."""
     try:
-        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM], audience=JWT_AUDIENCE)
         exp = payload.get("exp")
         expires_at = datetime.fromtimestamp(exp, tz=timezone.utc) if exp else datetime.now(timezone.utc) + timedelta(hours=1)
     except JWTError:
@@ -86,7 +89,7 @@ async def get_current_user(token: str = Depends(oauth2_scheme), db: Session = De
         headers={"WWW-Authenticate": "Bearer"},
     )
     try:
-        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM], audience=JWT_AUDIENCE)
         username: str = payload.get("sub")
         if username is None:
             raise credentials_exception
@@ -113,7 +116,7 @@ async def get_current_user_ws(websocket=None, token: str = None):
             await websocket.close(code=4001)
         return None
     try:
-        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM], audience=JWT_AUDIENCE)
         username: str = payload.get("sub")
         if username is None:
             if websocket:

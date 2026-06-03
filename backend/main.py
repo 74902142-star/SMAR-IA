@@ -38,8 +38,8 @@ app.add_middleware(
     CORSMiddleware,
     allow_origins=cors_origins,
     allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+    allow_headers=["Authorization", "Content-Type", "X-Requested-With"],
 )
 
 app.include_router(auth.router)
@@ -64,8 +64,10 @@ async def startup_event():
         blocked = db.query(BlockedIP).filter(BlockedIP.is_active == 1).all()
         restore_iptables_rules([b.ip for b in blocked])
         ml_service.load_models()
-        asyncio.create_task(process_traffic_loop())
-        asyncio.create_task(check_block_expiry_loop())
+        app._bg_tasks = [
+            asyncio.create_task(process_traffic_loop()),
+            asyncio.create_task(check_block_expiry_loop()),
+        ]
     finally:
         db.close()
 
@@ -180,6 +182,8 @@ def evaluate_condition(condition: str, context: dict) -> bool:
             raise NameError(f"Variable no permitida: {name}")
         if isinstance(node, ast.Constant):
             return node.value
+        if isinstance(node, (ast.Tuple, ast.List)):
+            return [_eval_node(e) for e in node.elts]
         if isinstance(node, ast.BinOp):
             left = _eval_node(node.left)
             right = _eval_node(node.right)
@@ -433,7 +437,7 @@ async def websocket_endpoint(websocket: WebSocket):
         try:
             await manager.disconnect(websocket)
         except Exception:
-            pass
+            logger.debug("WebSocket ya cerrado al desconectar")
 
 
 # ── Logs ────────────────────────────────────────────────────────────────
