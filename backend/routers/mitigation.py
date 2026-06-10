@@ -15,11 +15,13 @@ from sqlalchemy.orm import Session
 
 from database import get_security_db, SecurityLog, BlockedIP
 from auth import get_current_user, require_role
-from config import SUSPICIOUS_ALERT_COUNT, SUSPICIOUS_WINDOW_MINUTES
+from config import SUSPICIOUS_ALERT_COUNT, SUSPICIOUS_WINDOW_MINUTES, FIREWALL_BACKEND, DRY_RUN
 from event_manager import manager
 from routers.audit import record_audit
 from firewall import apply_iptables_block, remove_iptables_block
 from audit_logger import write_audit_log
+from progressive_block import get_block_duration, register_block
+from siem_integration import send_event as send_siem_event
 
 router = APIRouter(prefix="/api/mitigation", tags=["mitigation"])
 
@@ -207,14 +209,21 @@ async def block_ip(
     if is_ip_blocked(db, ip):
         return {"status": "success", "message": f"IP {ip} is already blocked."}
 
-    latency = apply_iptables_block(ip)
+    duration = get_block_duration(ip) if not request.expires_minutes else request.expires_minutes * 60
+    if FIREWALL_BACKEND == "nftables":
+        from firewall_nftables import nft_block_ip
+        latency = nft_block_ip(ip, duration) if not DRY_RUN else 0.0
+    else:
+        latency = apply_iptables_block(ip)
     expires_at = (
-        datetime.now(timezone.utc) + timedelta(minutes=request.expires_minutes)
-        if request.expires_minutes and request.expires_minutes > 0
+        datetime.now(timezone.utc) + timedelta(minutes=request.expires_minutes or duration // 60)
+        if (request.expires_minutes or duration) > 0
         else None
     )
 
     record_block(db, ip, method, request.attack_type or "Manual", f"MANUAL: {method}", expires_at=expires_at)
+    register_block(ip)
+    send_siem_event("manual_block", ip, f"{method}: {request.attack_type}", severity=5)
 
     log = SecurityLog(
         source_ip=ip,
@@ -270,7 +279,15 @@ async def unblock_ip(
 
     entry.is_active = 0
     db.commit()
-    remove_iptables_block(ip)
+
+    if FIREWALL_BACKEND == "nftables":
+        from firewall_nftables import nft_unblock_ip
+        nft_unblock_ip(ip)
+    else:
+        remove_iptables_block(ip)
+
+    from progressive_block import reset_offender
+    reset_offender(ip)
 
     record_audit(db, current_user.username, "UNBLOCK", ip, f"attack_type={payload.attack_type}")
 

@@ -7,7 +7,7 @@ import ipaddress
 import shlex
 from typing import List
 
-from config import DRY_RUN
+from config import DRY_RUN, FIREWALL_BACKEND
 
 logger = logging.getLogger("smar-ia-firewall")
 
@@ -115,17 +115,29 @@ def remove_iptables_block(ip: str) -> bool:
         return False
 
 
+def _get_block_func():
+    """Retorna la función de bloqueo según el backend configurado."""
+    if FIREWALL_BACKEND == "nftables":
+        try:
+            from firewall_nftables import nft_block_ip
+            return nft_block_ip
+        except ImportError:
+            logger.warning("nftables backend no disponible, usando iptables")
+    return apply_iptables_block
+
+
 def restore_iptables_rules(active_ips: List[str]):
-    """Restaura reglas iptables desde la BD al iniciar el backend."""
+    """Restaura reglas firewall desde la BD al iniciar el backend."""
     if DRY_RUN:
         logger.info("[DRY-RUN] Restaurando %d reglas de firewall...", len(active_ips))
         return
 
+    block_func = _get_block_func()
     logger.info("Restaurando %d reglas de firewall desde BD...", len(active_ips))
     restored = 0
     for ip in active_ips:
         try:
-            latency = apply_iptables_block(ip)
+            latency = block_func(ip)
             if latency >= 0:
                 restored += 1
         except ValueError:

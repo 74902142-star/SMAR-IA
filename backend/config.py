@@ -70,13 +70,46 @@ DRY_RUN = os.getenv("SMAR_IA_DRY_RUN", "false").lower() == "true"
 # ── Base de Datos ──
 SECURITY_DB_URL = os.getenv("SMAR_IA_SECURITY_DB", "sqlite:///./security_logs.db")
 TRAFFIC_DB_URL = os.getenv("SMAR_IA_TRAFFIC_DB", "sqlite:///./traffic.db")
+DATABASE_POOL_SIZE = int(os.getenv("SMAR_IA_DB_POOL_SIZE", "5"))
+DATABASE_MAX_OVERFLOW = int(os.getenv("SMAR_IA_DB_MAX_OVERFLOW", "10"))
+
+# ── Firewall backend ──
+FIREWALL_BACKEND = os.getenv("SMAR_IA_FIREWALL_BACKEND", "auto")  # auto, iptables, nftables
+
+# ── Bloqueo progresivo (fail2ban-style) ──
+PROGRESSIVE_BLOCK_ENABLED = os.getenv("SMAR_IA_PROGRESSIVE_BLOCK", "true").lower() == "true"
+PROGRESSIVE_BLOCK_INTERVALS = os.getenv(
+    "SMAR_IA_PROGRESSIVE_INTERVALS", "5,30,1440"
+)  # minutos: 1er, 2do, 3er+ bloqueo
+
+# ── SIEM ──
+SIEM_SYSLOG_ENABLED = os.getenv("SMAR_IA_SIEM_SYSLOG", "false").lower() == "true"
+SIEM_SYSLOG_HOST = os.getenv("SMAR_IA_SIEM_SYSLOG_HOST", "127.0.0.1")
+SIEM_SYSLOG_PORT = int(os.getenv("SMAR_IA_SIEM_SYSLOG_PORT", "514"))
+
+# ── Threat Intelligence ──
+THREAT_INTEL_ENABLED = os.getenv("SMAR_IA_THREAT_INTEL", "true").lower() == "true"
+THREAT_INTEL_UPDATE_MINUTES = int(os.getenv("SMAR_IA_THREAT_INTEL_UPDATE", "60"))
+THREAT_INTEL_FEEDS = os.getenv(
+    "SMAR_IA_THREAT_INTEL_FEEDS",
+    "https://feeds.dshield.org/block.txt,https://rules.emergingthreats.net/blockrules/compromised-ips.txt",
+)
+
+# ── Honeypot ──
+HONEYPOT_ENABLED = os.getenv("SMAR_IA_HONEYPOT", "false").lower() == "true"
+HONEYPOT_PORTS = os.getenv("SMAR_IA_HONEYPOT_PORTS", "22,3306,8080,8443")
+
+# ── Prometheus ──
+PROMETHEUS_ENABLED = os.getenv("SMAR_IA_PROMETHEUS", "true").lower() == "true"
 
 # ── Sistema ──
-APP_VERSION = "1.0.0"
+APP_VERSION = "1.1.0"
 APP_NAME = "SMAR-IA IDS"
 
 # ── Rate limiting ──
 LOGIN_RATE_LIMIT = os.getenv("SMAR_IA_LOGIN_RATE_LIMIT", "5/minute")
+FIREWALL_RATE_LIMIT_ALERTS = int(os.getenv("SMAR_IA_RATE_LIMIT_ALERTS", "10"))
+FIREWALL_RATE_LIMIT_WINDOW = int(os.getenv("SMAR_IA_RATE_LIMIT_WINDOW", "60"))
 
 
 def print_config_summary():
@@ -87,4 +120,10 @@ def print_config_summary():
     logger.info("Directorios modelos: %s", MODELS_DIR)
     logger.info("Umbral auto-bloqueo: %s", AUTO_BLOCK_THRESHOLD)
     logger.info("Modo dry-run: %s", DRY_RUN)
+    logger.info("Firewall backend: %s", FIREWALL_BACKEND)
+    logger.info("Bloqueo progresivo: %s", PROGRESSIVE_BLOCK_ENABLED)
+    logger.info("SIEM Syslog: %s", SIEM_SYSLOG_ENABLED)
+    logger.info("Threat Intelligence: %s", THREAT_INTEL_ENABLED)
+    logger.info("Honeypot: %s", HONEYPOT_ENABLED)
+    logger.info("Prometheus: %s", PROMETHEUS_ENABLED)
     logger.info("SECRET_KEY configurada: %s", "[OK] desde .env" if os.getenv("SMAR_IA_SECRET_KEY") else "[!!] valor por defecto (DEV)")

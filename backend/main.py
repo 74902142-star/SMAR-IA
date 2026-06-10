@@ -19,10 +19,24 @@ from routers.whitelist import is_whitelisted
 from routers.mitigation import add_suspicious_activity, record_block, is_ip_blocked
 from routers.audit import record_audit
 from event_manager import manager
-from config import print_config_summary, AUTO_BLOCK_THRESHOLD, DRY_RUN, CORS_ORIGINS
+from config import (
+    print_config_summary, AUTO_BLOCK_THRESHOLD, DRY_RUN, CORS_ORIGINS,
+    FIREWALL_BACKEND, PROGRESSIVE_BLOCK_ENABLED, THREAT_INTEL_ENABLED,
+    HONEYPOT_ENABLED, SIEM_SYSLOG_ENABLED, PROMETHEUS_ENABLED,
+)
 from firewall import remove_iptables_block, apply_iptables_block, restore_iptables_rules
 from alerting import notify_threat
 from audit_logger import write_audit_log
+from progressive_block import get_block_duration, register_block
+from rate_limiter_firewall import record_event as record_rate_event, set_threshold_callback
+from siem_integration import send_event as send_siem_event
+from threat_intel import is_known_threat, update_threat_intel
+from honeypot import start_honeypots, stop_honeypots
+from routers.honeypot_router import router as honeypot_router
+from routers.threat_intel_router import router as threat_intel_router
+from routers.progressive_block_router import router as progressive_block_router
+from routers.rate_limiter_router import router as rate_limiter_router
+from routers.prometheus_router import router as prometheus_router
 import rules
 
 logger = logging.getLogger("smar-ia-main")
@@ -49,6 +63,11 @@ app.include_router(rules.router)
 app.include_router(audit.router)
 app.include_router(whitelist.router)
 app.include_router(settings.router)
+app.include_router(honeypot_router)
+app.include_router(threat_intel_router)
+app.include_router(progressive_block_router)
+app.include_router(rate_limiter_router)
+app.include_router(prometheus_router)
 
 
 # ── Startup ──────────────────────────────────────────────────────────────
@@ -62,12 +81,23 @@ async def startup_event():
     db = next(get_security_db())
     try:
         blocked = db.query(BlockedIP).filter(BlockedIP.is_active == 1).all()
-        restore_iptables_rules([b.ip for b in blocked])
+        for b in blocked:
+            _block_ip(b.ip)
         ml_service.load_models()
-        app._bg_tasks = [
+
+        bg = [
             asyncio.create_task(process_traffic_loop()),
             asyncio.create_task(check_block_expiry_loop()),
         ]
+
+        if HONEYPOT_ENABLED:
+            bg.append(asyncio.create_task(start_honeypots()))
+
+        if THREAT_INTEL_ENABLED:
+            bg.append(asyncio.create_task(_threat_intel_loop()))
+
+        set_threshold_callback(_on_rate_limit_exceeded)
+        app._bg_tasks = bg
     finally:
         db.close()
 
@@ -103,7 +133,8 @@ def _process_expired_blocks(db: Session):
     )
     for entry in expired:
         entry.is_active = 0
-        remove_iptables_block(entry.ip)
+        _unblock_ip(entry.ip)
+        register_block(entry.ip)  # cuenta como strike para progresión
         _log_auto_unblock(db, entry)
     if expired:
         db.commit()
@@ -247,6 +278,8 @@ def _process_classified_traffic(traffic, attack_type, confidence, db_traffic, db
     action_taken = "NONE"
     is_alert = False
 
+    record_rate_event(traffic.source_ip)
+
     if is_ip_blocked(db_security, traffic.source_ip):
         _mark_processed(traffic, db_traffic)
         return
@@ -260,6 +293,7 @@ def _process_classified_traffic(traffic, attack_type, confidence, db_traffic, db
             "response": {"action_taken": "SKIPPED (whitelisted)"},
             "iso_compliance": {"controls_activated": ["A.8.15"]},
         })
+        send_siem_event("whitelist_hit", traffic.source_ip, f"{attack_type} skipped (whitelisted)", severity=2)
         return
 
     if attack_type == "Normal" or attack_type == "Unknown":
@@ -269,6 +303,11 @@ def _process_classified_traffic(traffic, attack_type, confidence, db_traffic, db
 
     is_alert = True
     add_suspicious_activity(traffic.source_ip)
+
+    if THREAT_INTEL_ENABLED and is_known_threat(traffic.source_ip):
+        logger.warning("Known threat IP detected: %s", traffic.source_ip)
+        confidence = max(confidence, 0.95)
+
     severity = _derive_severity(confidence, attack_type)
 
     action_taken = _evaluate_rules_and_mitigate(traffic, attack_type, confidence, db_security)
@@ -278,6 +317,7 @@ def _process_classified_traffic(traffic, attack_type, confidence, db_traffic, db
             action_taken = _auto_block(traffic, attack_type, confidence, db_security)
         else:
             action_taken = "ALERTED (Pending Manual Review)"
+            send_siem_event("alert", traffic.source_ip, f"{attack_type} pending review", severity=3)
 
     if confidence > 0.85:
         asyncio.create_task(notify_threat(traffic.source_ip, attack_type, confidence, action_taken))
@@ -285,6 +325,22 @@ def _process_classified_traffic(traffic, attack_type, confidence, db_traffic, db
     _save_security_log(traffic, attack_type, confidence, action_taken, db_security, severity=severity)
     _mark_processed(traffic, db_traffic)
     _broadcast_update(traffic, attack_type, confidence, is_alert, action_taken)
+
+
+def _block_ip(ip: str, duration_seconds: int = 3600) -> float:
+    """Bloquea IP usando el backend configurado (iptables o nftables)."""
+    if FIREWALL_BACKEND == "nftables":
+        from firewall_nftables import nft_block_ip
+        return nft_block_ip(ip, duration_seconds)
+    return apply_iptables_block(ip)
+
+
+def _unblock_ip(ip: str) -> bool:
+    """Desbloquea IP usando el backend configurado."""
+    if FIREWALL_BACKEND == "nftables":
+        from firewall_nftables import nft_unblock_ip
+        return nft_unblock_ip(ip)
+    return remove_iptables_block(ip)
 
 
 def _evaluate_rules_and_mitigate(traffic: NetworkTraffic, attack_type: str, confidence: float, db_security: Session) -> str:
@@ -295,7 +351,8 @@ def _evaluate_rules_and_mitigate(traffic: NetworkTraffic, attack_type: str, conf
     for rule in rules_list:
         if evaluate_condition(rule.condition, rule_context) and rule.action == "BLOCK":
             detection_ts = datetime.now(timezone.utc)
-            latency = apply_iptables_block(traffic.source_ip)
+            duration = get_block_duration(traffic.source_ip)
+            latency = _block_ip(traffic.source_ip, duration)
             mitigation_ts = datetime.now(timezone.utc)
             record_block(
                 db_security, traffic.source_ip,
@@ -303,6 +360,8 @@ def _evaluate_rules_and_mitigate(traffic: NetworkTraffic, attack_type: str, conf
                 action_taken=f"Rule {rule.name} triggered",
             )
             action_taken = f"RULE_BLOCKED: {rule.name}"
+            register_block(traffic.source_ip)
+            send_siem_event("rule_block", traffic.source_ip, f"Rule {rule.name}: {attack_type}", severity=4)
             _write_mitigation_audit(traffic, attack_type, confidence, action_taken, latency)
             _save_security_log(traffic, attack_type, confidence, action_taken, db_security,
                                detection_ts, mitigation_ts, latency)
@@ -311,20 +370,23 @@ def _evaluate_rules_and_mitigate(traffic: NetworkTraffic, attack_type: str, conf
 
 
 def _auto_block(traffic: NetworkTraffic, attack_type: str, confidence: float, db_security: Session) -> str:
-    """Ejecuta bloqueo automático por umbral de confianza."""
+    """Ejecuta bloqueo automático por umbral de confianza con progresión."""
     detection_ts = datetime.now(timezone.utc)
-    latency = apply_iptables_block(traffic.source_ip)
+    duration = get_block_duration(traffic.source_ip)
+    latency = _block_ip(traffic.source_ip, duration)
     mitigation_ts = datetime.now(timezone.utc)
 
     if DRY_RUN:
-        action_taken = f"DRY-RUN: iptables -A INPUT -s {traffic.source_ip} -j DROP"
+        action_taken = f"DRY-RUN: block {traffic.source_ip} for {duration}s"
     else:
-        action_taken = f"AUTO-BLOCKED: iptables -A INPUT -s {traffic.source_ip} -j DROP"
+        action_taken = f"AUTO-BLOCKED: {traffic.source_ip} for {duration}s"
         record_block(
             db_security, traffic.source_ip,
             method="AUTO", reason=attack_type,
             action_taken=action_taken,
         )
+        register_block(traffic.source_ip)
+        send_siem_event("auto_block", traffic.source_ip, f"{attack_type} blocked for {duration}s", severity=5)
 
     _write_mitigation_audit(traffic, attack_type, confidence, action_taken, latency)
     _save_security_log(traffic, attack_type, confidence, action_taken, db_security,
@@ -404,6 +466,59 @@ def _broadcast_update(traffic: NetworkTraffic, attack_type: str, confidence: flo
         asyncio.create_task(manager.broadcast(ws_message))
     except Exception as exc:
         logger.warning("Error en broadcast: %s", exc)
+
+
+# ── Workers nuevos ──────────────────────────────────────────────────────
+
+
+async def _threat_intel_loop():
+    """Actualiza periódicamente las listas de IPs maliciosas."""
+    from config import THREAT_INTEL_UPDATE_MINUTES
+    logger.info("Iniciando worker de Threat Intelligence...")
+    while True:
+        try:
+            await update_threat_intel()
+        except Exception as exc:
+            logger.error("Error en threat intel loop: %s", exc)
+        await asyncio.sleep(THREAT_INTEL_UPDATE_MINUTES * 60)
+
+
+def _on_rate_limit_exceeded(ip: str, count: int):
+    """Callback cuando una IP excede el rate limit de eventos."""
+    from database import get_security_db
+    logger.warning("Rate limit exceeded by %s: %d eventos en ventana", ip, count)
+    db = next(get_security_db())
+    try:
+        log = SecurityLog(
+            source_ip=ip,
+            destination_ip="Any",
+            attack_type="Rate-Limit",
+            confidence=0.9,
+            action_taken="ALERTED (Rate Limit Exceeded)",
+            severity="MEDIUM",
+        )
+        db.add(log)
+        db.commit()
+
+        write_audit_log({
+            "event_type": "RATE_LIMIT_EXCEEDED",
+            "network": {"source_ip": ip},
+            "detection": {"attack_type": "Rate-Limit", "confidence": 0.9},
+            "response": {"action_taken": "ALERTED"},
+        })
+    finally:
+        try:
+            db.close()
+        except Exception:
+            pass
+
+
+@app.on_event("shutdown")
+async def shutdown_event():
+    """Limpieza al detener la app."""
+    if HONEYPOT_ENABLED:
+        await stop_honeypots()
+    logger.info("SMAR-IA shutdown completado.")
 
 
 # ── WebSocket ───────────────────────────────────────────────────────────
