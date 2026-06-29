@@ -1,22 +1,72 @@
 {
-  "timestamp": "2026-05-27T02:17:10.978395",
+  "timestamp": "2026-06-24T15:48:04.449229+00:00",
   "results": [
     {
       "system": "Snort (baseline)",
-      "accuracy": 0.1375,
-      "precision": 0.8667,
-      "recall": 0.0619,
-      "f1_score": 0.1156,
+      "accuracy": 0.125,
+      "precision": 0.8571,
+      "recall": 0.0571,
+      "f1_score": 0.1071,
       "fpr": 0.0667,
-      "fnr": 0.9381,
+      "fnr": 0.9429,
       "confusion_matrix": [
         [
           28,
+          1,
+          1,
           0,
           0,
+          0,
+          0,
+          0
+        ],
+        [
+          30,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        [
+          25,
           0,
           1,
           1,
+          0,
+          1,
+          0,
+          2
+        ],
+        [
+          26,
+          1,
+          0,
+          1,
+          1,
+          0,
+          1,
+          0
+        ],
+        [
+          30,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        [
+          29,
+          0,
+          1,
+          0,
+          0,
+          0,
           0,
           0
         ],
@@ -24,26 +74,6 @@
           29,
           0,
           0,
-          1,
-          0,
-          0,
-          0,
-          0
-        ],
-        [
-          23,
-          1,
-          4,
-          0,
-          0,
-          0,
-          2,
-          0
-        ],
-        [
-          28,
-          1,
-          0,
           0,
           0,
           1,
@@ -51,38 +81,8 @@
           0
         ],
         [
-          27,
+          29,
           1,
-          0,
-          0,
-          1,
-          0,
-          1,
-          0
-        ],
-        [
-          30,
-          0,
-          0,
-          0,
-          0,
-          0,
-          0,
-          0
-        ],
-        [
-          30,
-          0,
-          0,
-          0,
-          0,
-          0,
-          0,
-          0
-        ],
-        [
-          30,
-          0,
           0,
           0,
           0,
@@ -93,9 +93,9 @@
       ],
       "classification_report": {
         "Normal": {
-          "precision": 0.12444444444444444,
+          "precision": 0.12389380530973451,
           "recall": 0.9333333333333333,
-          "f1-score": 0.2196078431372549,
+          "f1-score": 0.21875,
           "support": 30.0
         },
         "DDoS SYN Flood": {
@@ -105,21 +105,21 @@
           "support": 30.0
         },
         "DDoS UDP Flood": {
-          "precision": 1.0,
-          "recall": 0.13333333333333333,
-          "f1-score": 0.23529411764705882,
+          "precision": 0.3333333333333333,
+          "recall": 0.03333333333333333,
+          "f1-score": 0.06060606060606061,
           "support": 30.0
         },
         "Sniffing Pasivo": {
-          "precision": 0.0,
-          "recall": 0.0,
-          "f1-score": 0.0,
-          "support": 30.0
-        },
-        "DHCP Starvation": {
           "precision": 0.5,
           "recall": 0.03333333333333333,
           "f1-score": 0.0625,
+          "support": 30.0
+        },
+        "DHCP Starvation": {
+          "precision": 0.0,
+          "recall": 0.0,
+          "f1-score": 0.0,
           "support": 30.0
         },
         "DHCP Spoofing": {
@@ -140,17 +140,172 @@
           "f1-score": 0.0,
           "support": 30.0
         },
-        "accuracy": 0.1375,
+        "accuracy": 0.125,
         "macro avg": {
-          "precision": 0.20305555555555554,
-          "recall": 0.1375,
-          "f1-score": 0.06467524509803921,
+          "precision": 0.11965339233038347,
+          "recall": 0.125,
+          "f1-score": 0.042732007575757576,
           "support": 240.0
         },
         "weighted avg": {
-          "precision": 0.20305555555555557,
-          "recall": 0.1375,
-          "f1-score": 0.06467524509803921,
+          "precision": 0.11965339233038348,
+          "recall": 0.125,
+          "f1-score": 0.042732007575757576,
+          "support": 240.0
+        }
+      },
+      "n_samples": 240
+    },
+    {
+      "system": "Suricata (baseline)",
+      "accuracy": 0.325,
+      "precision": 0.9524,
+      "recall": 0.2857,
+      "f1_score": 0.4396,
+      "fpr": 0.1,
+      "fnr": 0.7143,
+      "confusion_matrix": [
+        [
+          27,
+          0,
+          0,
+          1,
+          0,
+          1,
+          0,
+          1
+        ],
+        [
+          20,
+          9,
+          0,
+          0,
+          0,
+          0,
+          0,
+          1
+        ],
+        [
+          5,
+          0,
+          24,
+          0,
+          0,
+          0,
+          1,
+          0
+        ],
+        [
+          29,
+          0,
+          0,
+          0,
+          1,
+          0,
+          0,
+          0
+        ],
+        [
+          30,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        [
+          28,
+          0,
+          0,
+          1,
+          1,
+          0,
+          0,
+          0
+        ],
+        [
+          13,
+          1,
+          0,
+          0,
+          0,
+          0,
+          16,
+          0
+        ],
+        [
+          25,
+          0,
+          0,
+          0,
+          0,
+          0,
+          3,
+          2
+        ]
+      ],
+      "classification_report": {
+        "Normal": {
+          "precision": 0.15254237288135594,
+          "recall": 0.9,
+          "f1-score": 0.2608695652173913,
+          "support": 30.0
+        },
+        "DDoS SYN Flood": {
+          "precision": 0.9,
+          "recall": 0.3,
+          "f1-score": 0.45,
+          "support": 30.0
+        },
+        "DDoS UDP Flood": {
+          "precision": 1.0,
+          "recall": 0.8,
+          "f1-score": 0.8888888888888888,
+          "support": 30.0
+        },
+        "Sniffing Pasivo": {
+          "precision": 0.0,
+          "recall": 0.0,
+          "f1-score": 0.0,
+          "support": 30.0
+        },
+        "DHCP Starvation": {
+          "precision": 0.0,
+          "recall": 0.0,
+          "f1-score": 0.0,
+          "support": 30.0
+        },
+        "DHCP Spoofing": {
+          "precision": 0.0,
+          "recall": 0.0,
+          "f1-score": 0.0,
+          "support": 30.0
+        },
+        "Port Scanning": {
+          "precision": 0.8,
+          "recall": 0.5333333333333333,
+          "f1-score": 0.64,
+          "support": 30.0
+        },
+        "Brute Force": {
+          "precision": 0.5,
+          "recall": 0.06666666666666667,
+          "f1-score": 0.11764705882352941,
+          "support": 30.0
+        },
+        "accuracy": 0.325,
+        "macro avg": {
+          "precision": 0.41906779661016946,
+          "recall": 0.325,
+          "f1-score": 0.2946756891162262,
+          "support": 240.0
+        },
+        "weighted avg": {
+          "precision": 0.4190677966101695,
+          "recall": 0.325,
+          "f1-score": 0.29467568911622616,
           "support": 240.0
         }
       },
@@ -313,7 +468,10 @@
     }
   ],
   "hypothesis_h4": {
-    "fpr_reduction_pct": 100.0,
-    "target_met": "True"
+    "fpr_reduction_pct": {
+      "Snort (baseline)": 100.0,
+      "Suricata (baseline)": 100.0
+    },
+    "target_met": true
   }
 }

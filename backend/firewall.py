@@ -4,7 +4,6 @@ import subprocess
 import logging
 import time
 import ipaddress
-import shlex
 from typing import List
 
 from config import DRY_RUN, FIREWALL_BACKEND
@@ -22,6 +21,15 @@ _NEVER_BLOCK_NETWORKS = [
     ipaddress.ip_network("172.16.0.0/12"),
     ipaddress.ip_network("192.168.0.0/16"),
 ]
+
+
+def validate_ip(ip: str) -> bool:
+    """Valida que la IP sea IPv4 o IPv6 válida."""
+    try:
+        ipaddress.ip_address(ip.strip())
+        return True
+    except (ValueError, AttributeError):
+        return False
 
 
 def _validate_ip(ip: str) -> str:
@@ -60,18 +68,16 @@ def apply_iptables_block(ip: str, duration_seconds: int = 3600) -> float:
     """
     ip = _validate_ip(ip)
     detection_time = time.perf_counter()
-    quoted_ip = shlex.quote(ip)
-
     if DRY_RUN:
         logger.info("[DRY-RUN] iptables -A INPUT -s %s -j DROP (duration=%ss)", ip, duration_seconds)
         return 0.0
 
     try:
-        check_cmd = ["sudo", "iptables", "-C", "INPUT", "-s", quoted_ip, "-j", "DROP"]
+        check_cmd = ["sudo", "iptables", "-C", "INPUT", "-s", ip, "-j", "DROP"]
         exists = subprocess.run(check_cmd, capture_output=True).returncode == 0
 
         if not exists:
-            add_cmd = ["sudo", "iptables", "-A", "INPUT", "-s", quoted_ip, "-j", "DROP"]
+            add_cmd = ["sudo", "iptables", "-A", "INPUT", "-s", ip, "-j", "DROP"]
             subprocess.run(add_cmd, check=True, timeout=30)
 
             mitigation_time = time.perf_counter()
@@ -99,14 +105,12 @@ def remove_iptables_block(ip: str) -> bool:
     except ValueError:
         return False
 
-    quoted_ip = shlex.quote(ip)
-
     if DRY_RUN:
         logger.info("[DRY-RUN] iptables -D INPUT -s %s -j DROP", ip)
         return True
 
     try:
-        del_cmd = ["sudo", "iptables", "-D", "INPUT", "-s", quoted_ip, "-j", "DROP"]
+        del_cmd = ["sudo", "iptables", "-D", "INPUT", "-s", ip, "-j", "DROP"]
         subprocess.run(del_cmd, check=True, timeout=30)
         logger.info("IP %s desbloqueada en firewall.", ip)
         return True
@@ -154,8 +158,7 @@ def is_iptables_block_active(ip: str) -> bool:
     """Verifica si una IP tiene regla activa en iptables."""
     try:
         ip = _validate_ip(ip)
-        quoted_ip = shlex.quote(ip)
-        check_cmd = ["sudo", "iptables", "-C", "INPUT", "-s", quoted_ip, "-j", "DROP"]
+        check_cmd = ["sudo", "iptables", "-C", "INPUT", "-s", ip, "-j", "DROP"]
         return subprocess.run(check_cmd, capture_output=True, timeout=10).returncode == 0
     except (ValueError, subprocess.TimeoutExpired, OSError):
         return False

@@ -2,7 +2,7 @@
 
 import asyncio
 import logging
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 
 from fastapi import FastAPI, Depends, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
@@ -81,8 +81,17 @@ async def startup_event():
     db = next(get_security_db())
     try:
         blocked = db.query(BlockedIP).filter(BlockedIP.is_active == 1).all()
-        for b in blocked:
-            _block_ip(b.ip)
+        active_ips = []
+        for entry in blocked:
+            if _is_expired(entry.expires_at):
+                entry.is_active = 0
+                _unblock_ip(entry.ip)
+                _log_auto_unblock(db, entry)
+            else:
+                active_ips.append(entry.ip)
+        if active_ips:
+            restore_iptables_rules(active_ips)
+        db.commit()
         ml_service.load_models()
 
         bg = [
@@ -124,13 +133,12 @@ async def check_block_expiry_loop():
 
 def _process_expired_blocks(db: Session):
     """Marca como inactivos los bloqueos vencidos y notifica."""
-    now = datetime.now(timezone.utc)
-    now_naive = now.replace(tzinfo=None)
     expired = (
         db.query(BlockedIP)
-        .filter(BlockedIP.is_active == 1, BlockedIP.expires_at != None, BlockedIP.expires_at <= now_naive)
+        .filter(BlockedIP.is_active == 1, BlockedIP.expires_at != None)
         .all()
     )
+    expired = [entry for entry in expired if _is_expired(entry.expires_at)]
     for entry in expired:
         entry.is_active = 0
         _unblock_ip(entry.ip)
@@ -138,6 +146,28 @@ def _process_expired_blocks(db: Session):
         _log_auto_unblock(db, entry)
     if expired:
         db.commit()
+
+
+def _as_utc(value):
+    """Normaliza datetimes de SQLite/SQLAlchemy para comparaciones UTC."""
+    if value is None:
+        return None
+    if value.tzinfo is None:
+        return value.replace(tzinfo=timezone.utc)
+    return value.astimezone(timezone.utc)
+
+
+def _is_expired(expires_at) -> bool:
+    """Indica si un bloqueo con expires_at ya venció."""
+    expires_at = _as_utc(expires_at)
+    return expires_at is not None and expires_at <= datetime.now(timezone.utc)
+
+
+def _expires_from_duration(duration_seconds: int):
+    """Calcula expires_at UTC para bloqueos temporales."""
+    if duration_seconds <= 0:
+        return None
+    return datetime.now(timezone.utc) + timedelta(seconds=duration_seconds)
 
 
 def _log_auto_unblock(db: Session, entry):
@@ -358,6 +388,7 @@ def _evaluate_rules_and_mitigate(traffic: NetworkTraffic, attack_type: str, conf
                 db_security, traffic.source_ip,
                 method=f"RULE:{rule.name}", reason=attack_type,
                 action_taken=f"Rule {rule.name} triggered",
+                expires_at=_expires_from_duration(duration),
             )
             action_taken = f"RULE_BLOCKED: {rule.name}"
             register_block(traffic.source_ip)
@@ -384,6 +415,7 @@ def _auto_block(traffic: NetworkTraffic, attack_type: str, confidence: float, db
             db_security, traffic.source_ip,
             method="AUTO", reason=attack_type,
             action_taken=action_taken,
+            expires_at=_expires_from_duration(duration),
         )
         register_block(traffic.source_ip)
         send_siem_event("auto_block", traffic.source_ip, f"{attack_type} blocked for {duration}s", severity=5)

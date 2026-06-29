@@ -1,3 +1,4 @@
 System,Accuracy,Precision,Recall,F1,FPR,FNR
-Snort (baseline),0.1375,0.8667,0.0619,0.1156,0.0667,0.9381
+Snort (baseline),0.125,0.8571,0.0571,0.1071,0.0667,0.9429
+Suricata (baseline),0.325,0.9524,0.2857,0.4396,0.1,0.7143
 SMAR-IA,1.0,1.0,1.0,1.0,0.0,0.0

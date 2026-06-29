@@ -8,11 +8,14 @@ import sys
 import json
 import csv
 import logging
+import warnings
 
 import numpy as np
 import joblib
 
+from sklearn.base import clone
 from sklearn.model_selection import StratifiedKFold
+from sklearn.preprocessing import StandardScaler
 from sklearn.metrics import (
     accuracy_score, precision_score, recall_score, f1_score,
     confusion_matrix, classification_report,
@@ -20,6 +23,11 @@ from sklearn.metrics import (
 
 logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
 logger = logging.getLogger("ml_evaluate")
+warnings.filterwarnings(
+    "ignore",
+    message=".*sklearn.utils.parallel.delayed.*",
+    category=UserWarning,
+)
 
 ATTACK_CLASSES = [
     "Normal", "DDoS SYN Flood", "DDoS UDP Flood",
@@ -28,7 +36,8 @@ ATTACK_CLASSES = [
 ]
 NUM_FEATURES = 80
 N_SAMPLES_PER_CLASS = 500
-N_SPLITS = 5
+N_SPLITS = 10
+RANDOM_STATE = 42
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 MODELS_DIR = os.path.join(BASE_DIR, "..", "..", "ml_pipeline", "models")
@@ -116,27 +125,38 @@ def compute_metrics(y_true_str, y_pred_str, classes):
 
 
 def evaluate():
+    np.random.seed(RANDOM_STATE)
     logger.info("Generando dataset de evaluación...")
     X, y_str = generate_dataset()
     logger.info("Dataset: %d muestras, %d features", X.shape[0], X.shape[1])
 
     logger.info("Cargando modelos desde %s...", MODELS_DIR)
-    rf, scaler, le = load_models()
+    rf, _scaler, le = load_models()
+    if hasattr(rf, "n_jobs"):
+        rf.n_jobs = 1
     logger.info("Modelos cargados: %s", type(rf).__name__)
 
-    X_scaled = scaler.transform(X)
     y_encoded = le.transform(y_str)
     classes = list(le.classes_)
 
-    skf = StratifiedKFold(n_splits=N_SPLITS, shuffle=True, random_state=42)
+    skf = StratifiedKFold(n_splits=N_SPLITS, shuffle=True, random_state=RANDOM_STATE)
     all_y_true, all_y_pred = [], []
     fold_results = []
 
-    for fold_idx, (train_idx, test_idx) in enumerate(skf.split(X_scaled, y_encoded)):
-        X_test_fold = X_scaled[test_idx]
+    for fold_idx, (train_idx, test_idx) in enumerate(skf.split(X, y_encoded)):
+        X_train_fold = X[train_idx]
+        X_test_fold = X[test_idx]
+        y_train_fold = y_encoded[train_idx]
         y_test_fold = y_encoded[test_idx]
 
-        y_pred_fold_enc = rf.predict(X_test_fold)
+        fold_scaler = StandardScaler()
+        X_train_fold = fold_scaler.fit_transform(X_train_fold)
+        X_test_fold = fold_scaler.transform(X_test_fold)
+
+        fold_model = clone(rf)
+        fold_model.fit(X_train_fold, y_train_fold)
+
+        y_pred_fold_enc = fold_model.predict(X_test_fold)
         y_true_fold = le.inverse_transform(y_test_fold)
         y_pred_fold = le.inverse_transform(y_pred_fold_enc)
 
@@ -152,6 +172,12 @@ def evaluate():
         )
 
     overall = compute_metrics(np.array(all_y_true), np.array(all_y_pred), classes)
+    fold_summary = {
+        "accuracy_mean": round(float(np.mean([m["accuracy"] for m in fold_results])), 4),
+        "accuracy_std": round(float(np.std([m["accuracy"] for m in fold_results])), 4),
+        "f1_macro_mean": round(float(np.mean([m["f1_macro"] for m in fold_results])), 4),
+        "f1_macro_std": round(float(np.std([m["f1_macro"] for m in fold_results])), 4),
+    }
 
     report = classification_report(
         np.array(all_y_true), np.array(all_y_pred),
@@ -159,12 +185,13 @@ def evaluate():
     )
 
     results = {
-        "experiment": "Validación Cruzada SMAR-IA (5-Fold)",
+        "experiment": "Validación Cruzada SMAR-IA (10-Fold)",
         "n_samples": len(y_str),
         "n_splits": N_SPLITS,
         "n_features": NUM_FEATURES,
         "model_type": type(rf).__name__,
         "class_names": classes,
+        "fold_summary": fold_summary,
         "fold_results": [
             {"fold": i + 1, **m} for i, m in enumerate(fold_results)
         ],
@@ -207,7 +234,7 @@ def evaluate():
         cm = np.array(overall["confusion_matrix"])
         sns.heatmap(cm, annot=True, fmt="d", cmap="Blues",
                     xticklabels=classes, yticklabels=classes, ax=axes[0])
-        axes[0].set_title("Matriz de Confusión — Validación Cruzada (5-Fold)")
+        axes[0].set_title("Matriz de Confusión — Validación Cruzada (10-Fold)")
         axes[0].set_xlabel("Predicción")
         axes[0].set_ylabel("Real")
 
@@ -222,7 +249,7 @@ def evaluate():
         axes[1].set_xticks(x_pos + width)
         axes[1].set_xticklabels(classes, rotation=45, ha="right")
         axes[1].set_ylabel("Puntaje")
-        axes[1].set_title("Métricas por Clase — Validación Cruzada (5-Fold)")
+        axes[1].set_title("Métricas por Clase — Validación Cruzada (10-Fold)")
         axes[1].legend()
         axes[1].set_ylim(0, 1.1)
 
@@ -242,6 +269,7 @@ def evaluate():
     logger.info("  Precision (macro): %.4f", overall["precision_macro"])
     logger.info("  Recall (macro):    %.4f", overall["recall_macro"])
     logger.info("  F1-Score (macro):  %.4f", overall["f1_macro"])
+    logger.info("  F1 Macro CV:       %.4f ± %.4f", fold_summary["f1_macro_mean"], fold_summary["f1_macro_std"])
     logger.info("=" * 60)
 
     return results

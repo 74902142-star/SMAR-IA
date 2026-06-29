@@ -24,11 +24,11 @@ from auth import (
     logout_token, is_token_blacklisted, JWT_AUDIENCE
 )
 from database import (
-    SecurityBase, SecuritySessionLocal, User, RevokedToken, SecurityLog,
+    SecurityBase, SecuritySessionLocal, User, RevokedToken, SecurityLog, NetworkTraffic,
     BlockedIP, Whitelist, Rule, AppSetting, AuditLog, get_security_db,
     init_db, _migrate_security_db
 )
-from firewall import _validate_ip, apply_iptables_block, remove_iptables_block, _NEVER_BLOCK_IPS, _NEVER_BLOCK_NETWORKS
+from firewall import validate_ip, _validate_ip, apply_iptables_block, remove_iptables_block, _NEVER_BLOCK_IPS, _NEVER_BLOCK_NETWORKS
 from ml_service import MLService
 from audit_logger import write_audit_log, read_audit_logs, _compute_hash, LOGS_DIR
 from event_manager import ConnectionManager
@@ -183,6 +183,11 @@ class TestFirewall:
         with pytest.raises(ValueError):
             _validate_ip("256.256.256.256")
 
+    def test_public_validate_ip_bool(self):
+        assert validate_ip("8.8.8.8") is True
+        assert validate_ip("2001:4860:4860::8888") is True
+        assert validate_ip("not_an_ip") is False
+
     def test_never_block_loopback(self):
         with pytest.raises(ValueError, match="nunca bloquear"):
             _validate_ip("127.0.0.1")
@@ -198,6 +203,18 @@ class TestFirewall:
     def test_remove_invalid_ip(self):
         result = remove_iptables_block("invalid")
         assert result is False
+
+    def test_iptables_commands_use_raw_ip_args(self):
+        with patch("firewall.subprocess.run") as mock_run:
+            mock_run.side_effect = [MagicMock(returncode=1), MagicMock(returncode=0)]
+            with patch("firewall.DRY_RUN", False):
+                apply_iptables_block("8.8.8.8")
+            assert mock_run.call_args_list[0].args[0] == [
+                "sudo", "iptables", "-C", "INPUT", "-s", "8.8.8.8", "-j", "DROP"
+            ]
+            assert mock_run.call_args_list[1].args[0] == [
+                "sudo", "iptables", "-A", "INPUT", "-s", "8.8.8.8", "-j", "DROP"
+            ]
 
 
 # ── Tests de ML Service ────────────────────────────────────────────────
@@ -485,6 +502,17 @@ class TestMitigation:
         record_block(db, "10.0.0.99", "TEST", "testing", "test block")
         assert is_ip_blocked(db, "10.0.0.99") is True
 
+    def test_manual_block_rejects_whitelisted_ip(self, client, admin_token, db):
+        db.add(Whitelist(ip="8.8.4.4", reason="dns servidor critico"))
+        db.commit()
+        resp = client.post(
+            "/api/mitigation/block",
+            json={"ip": "8.8.4.4", "action": "BLOCK_IP", "attack_type": "Manual"},
+            headers={"Authorization": f"Bearer {admin_token}"},
+        )
+        assert resp.status_code == 403
+        assert is_ip_blocked(db, "8.8.4.4") is False
+
     def test_whitelist_validate_ip(self):
         assert wl_validate_ip("10.0.0.1") == "10.0.0.1"
         with pytest.raises(Exception):
@@ -749,6 +777,18 @@ class TestTrafficProcessing:
         _process_expired_blocks(db)
         db.refresh(entry)
         assert entry.is_active == 0
+
+    def test_auto_block_sets_expiration(self, db):
+        import main
+        from main import _auto_block
+        traffic = NetworkTraffic(source_ip="8.8.8.8", destination_ip="10.0.0.10", features_csv="")
+        with patch.object(main, "DRY_RUN", False):
+            with patch.object(main, "_block_ip", return_value=12.5):
+                action = _auto_block(traffic, "DDoS", 0.95, db)
+        blocked = db.query(BlockedIP).filter(BlockedIP.ip == "8.8.8.8").first()
+        assert "block" in action.lower()
+        assert blocked is not None
+        assert blocked.expires_at is not None
 
     def test_uptime_endpoint(self, client, admin_token):
         resp = client.get("/api/health")

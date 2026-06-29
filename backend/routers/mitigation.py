@@ -22,6 +22,7 @@ from firewall import apply_iptables_block, remove_iptables_block
 from audit_logger import write_audit_log
 from progressive_block import get_block_duration, register_block
 from siem_integration import send_event as send_siem_event
+from routers.whitelist import is_whitelisted
 
 router = APIRouter(prefix="/api/mitigation", tags=["mitigation"])
 
@@ -127,6 +128,13 @@ def record_block(db: Session, ip: str, method: str, reason: str, action_taken: s
     return blocked
 
 
+def _expires_from_duration(duration_seconds: int) -> datetime | None:
+    """Calcula expiración UTC para bloqueos temporales."""
+    if duration_seconds <= 0:
+        return None
+    return datetime.now(timezone.utc) + timedelta(seconds=duration_seconds)
+
+
 # ── Endpoints ───────────────────────────────────────────────────────────
 
 
@@ -206,6 +214,17 @@ async def block_ip(
     if method in ("CLOSE_TCP", "CLOSE_UDP") and not request.port:
         raise HTTPException(status_code=400, detail=f"Puerto requerido para {method}")
 
+    if is_whitelisted(db, ip):
+        write_audit_log({
+            "event_type": "WHITELIST_HIT",
+            "network": {"source_ip": ip, "destination_ip": "Any"},
+            "detection": {"attack_type": request.attack_type or "Manual"},
+            "response": {"action_taken": f"BLOCK_SKIPPED: whitelisted {ip}"},
+            "iso_compliance": {"controls_activated": ["A.8.15"]},
+            "username": current_user.username,
+        })
+        raise HTTPException(status_code=403, detail=f"IP {ip} está en whitelist y no puede bloquearse")
+
     if is_ip_blocked(db, ip):
         return {"status": "success", "message": f"IP {ip} is already blocked."}
 
@@ -214,12 +233,8 @@ async def block_ip(
         from firewall_nftables import nft_block_ip
         latency = nft_block_ip(ip, duration) if not DRY_RUN else 0.0
     else:
-        latency = apply_iptables_block(ip)
-    expires_at = (
-        datetime.now(timezone.utc) + timedelta(minutes=request.expires_minutes or duration // 60)
-        if (request.expires_minutes or duration) > 0
-        else None
-    )
+        latency = apply_iptables_block(ip, duration)
+    expires_at = _expires_from_duration(duration)
 
     record_block(db, ip, method, request.attack_type or "Manual", f"MANUAL: {method}", expires_at=expires_at)
     register_block(ip)

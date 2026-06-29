@@ -12,7 +12,7 @@ Requisitos:
 
 El script:
   1. Carga/genera dataset de tráfico con etiquetas reales (80 features + attack_type)
-  2. Simula detección de Snort usando reglas básicas (DDoS, DHCP, Port Scan)
+  2. Simula detección de Snort/Suricata usando reglas básicas (DDoS, DHCP, Port Scan)
   3. Ejecuta predicción del modelo SMAR-IA (RandomForest)
   4. Calcula matriz de confusión y métricas para ambos
   5. Genera informe comparativo (CSV + gráficas)
@@ -21,6 +21,7 @@ import os
 import sys
 import json
 import random
+import warnings
 import numpy as np
 import pandas as pd
 from sklearn.metrics import (
@@ -29,12 +30,18 @@ from sklearn.metrics import (
     roc_auc_score, roc_curve
 )
 from sklearn.preprocessing import label_binarize
-from datetime import datetime
+from datetime import datetime, timezone
 
 # Añadir backend al path para importar modelos
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 from ml_service import ml_service
+
+warnings.filterwarnings(
+    "ignore",
+    message=".*sklearn.utils.parallel.delayed.*",
+    category=UserWarning,
+)
 
 ATTACK_CLASSES = [
     "Normal",
@@ -48,6 +55,7 @@ ATTACK_CLASSES = [
 ]
 
 NON_NORMAL = [c for c in ATTACK_CLASSES if c != "Normal"]
+RANDOM_SEED = 42
 
 
 def _gen_features(attack_type: str) -> list:
@@ -91,6 +99,43 @@ SNORT_RULES = {
     "Sniffing Pasivo":{"threshold": 0.40, "feature_range": (45, 65)},
 }
 
+SURICATA_RULES = {
+    "DDoS SYN Flood": {"threshold": 0.42, "feature_range": (0, 15)},
+    "DDoS UDP Flood": {"threshold": 0.42, "feature_range": (10, 25)},
+    "Port Scanning":  {"threshold": 0.38, "feature_range": (20, 40)},
+    "Brute Force":    {"threshold": 0.40, "feature_range": (30, 50)},
+    "DHCP Starvation":{"threshold": 0.38, "feature_range": (35, 55)},
+    "DHCP Spoofing":  {"threshold": 0.38, "feature_range": (40, 60)},
+    "Sniffing Pasivo":{"threshold": 0.36, "feature_range": (45, 65)},
+}
+
+
+def _rule_predict(features: list, rules: dict, normal_fpr: float) -> tuple:
+    """Aplica un baseline de firmas por umbrales sobre features."""
+    features_arr = np.array(features)
+    best_match = "Normal"
+    best_conf = 0.0
+
+    for atype, rule in rules.items():
+        lo, hi = rule["feature_range"]
+        segment = features_arr[lo:hi]
+        if len(segment) == 0:
+            continue
+        mean_val = float(np.mean(segment))
+        normalized = min(1.0, max(0.0, mean_val / 5.0))
+        if normalized > rule["threshold"] and normalized > best_conf:
+            best_conf = normalized
+            best_match = atype
+
+    if best_match == "Normal" and random.random() < normal_fpr:
+        candidates = list(rules.keys())
+        best_match = random.choice(candidates)
+        best_conf = round(random.uniform(0.40, 0.65), 4)
+
+    if best_match != "Normal":
+        return best_match, round(best_conf, 4)
+    return "Normal", 0.0
+
 
 def snort_predict(features: list, attack_type: str) -> tuple:
     """
@@ -98,35 +143,15 @@ def snort_predict(features: list, attack_type: str) -> tuple:
     Snort tradicional usa umbrales sobre features de tráfico.
     Retorna (predicted_class, confidence).
     """
-    features_arr = np.array(features)
-    best_match = "Normal"
-    best_conf = 0.0
+    return _rule_predict(features, SNORT_RULES, normal_fpr=0.05)
 
-    for atype, rule in SNORT_RULES.items():
-        lo, hi = rule["feature_range"]
-        segment = features_arr[lo:hi]
-        if len(segment) == 0:
-            continue
-        mean_val = float(np.mean(segment))
-        # Normalizar a [0, 1] como pseudo-confianza:
-        #   mean_val ~ 0.0 para Normal, ~2.0-4.0 para ataques
-        normalized = min(1.0, max(0.0, mean_val / 5.0))
-        if normalized > rule["threshold"] and normalized > best_conf:
-            best_conf = normalized
-            best_match = atype
 
-    # Agregar algo de FPR simulado: Snort tiene ~5% FPR en tráfico normal
-    is_normal_noise = random.random() < 0.05
-    if best_match == "Normal" and is_normal_noise:
-        best_match = random.choice([
-            k for k in SNORT_RULES.keys()
-            if random.random() < 0.3  # Solo algunos tipos
-        ])
-        best_conf = round(random.uniform(0.40, 0.60), 4)
-
-    if best_match != "Normal":
-        return best_match, round(best_conf, 4)
-    return "Normal", 0.0
+def suricata_predict(features: list, attack_type: str) -> tuple:
+    """
+    Simula detección de Suricata con reglas más sensibles que Snort.
+    Retorna (predicted_class, confidence).
+    """
+    return _rule_predict(features, SURICATA_RULES, normal_fpr=0.035)
 
 
 def evaluate_snort(X_test, y_true) -> dict:
@@ -141,14 +166,23 @@ def evaluate_snort(X_test, y_true) -> dict:
     return _compute_metrics(y_true, y_pred, y_prob, "Snort (baseline)")
 
 
-def evaluate_smaria(X_test, y_true) -> dict:
-    """Evalúa rendimiento de SMAR-IA contra etiquetas reales."""
+def evaluate_suricata(X_test, y_true) -> dict:
+    """Evalúa rendimiento de Suricata contra etiquetas reales."""
     y_pred = []
     y_prob = []
     for features in X_test:
-        pred, conf = ml_service.predict(features)
+        pred, conf = suricata_predict(features, "unknown")
         y_pred.append(pred)
         y_prob.append(conf)
+
+    return _compute_metrics(y_true, y_pred, y_prob, "Suricata (baseline)")
+
+
+def evaluate_smaria(X_test, y_true) -> dict:
+    """Evalúa rendimiento de SMAR-IA contra etiquetas reales."""
+    predictions = ml_service.predict_batch(X_test)
+    y_pred = [pred for pred, _conf in predictions]
+    y_prob = [conf for _pred, conf in predictions]
 
     return _compute_metrics(y_true, y_pred, y_prob, "SMAR-IA")
 
@@ -190,7 +224,7 @@ def _compute_metrics(y_true, y_pred, y_prob, label) -> dict:
 def _print_report(results: list):
     """Imprime tabla comparativa y cálculo de reducción de FPR."""
     print("\n" + "=" * 70)
-    print("  INFORME COMPARATIVO: SMAR-IA vs SNORT (baseline)")
+    print("  INFORME COMPARATIVO: SMAR-IA vs SNORT/SURICATA (baseline)")
     print("=" * 70)
 
     data = {}
@@ -205,15 +239,20 @@ def _print_report(results: list):
         print(f"    FNR      : {r['fnr']:.4f}")
         print(f"    Muestras : {r['n_samples']}")
 
-    if "SMAR-IA" in data and "Snort (baseline)" in data:
+    fpr_reductions = {}
+    if "SMAR-IA" in data:
         sm = data["SMAR-IA"]
-        sn = data["Snort (baseline)"]
-        fpr_reduction = ((sn["fpr"] - sm["fpr"]) / sn["fpr"] * 100) if sn["fpr"] > 0 else 0
         print(f"\n  ── HIPÓTESIS H4: Reducción de Falsos Positivos ──")
-        print(f"    Snort FPR        : {sn['fpr']:.4f} ({sn['fpr']*100:.2f}%)")
-        print(f"    SMAR-IA FPR      : {sm['fpr']:.4f} ({sm['fpr']*100:.2f}%)")
-        print(f"    Reducción FPR    : {fpr_reduction:.2f}%")
-        print(f"    Objetivo (≥50%)  : {'✓ CUMPLE' if fpr_reduction >= 50 else '✗ NO CUMPLE'}")
+        for baseline in ("Snort (baseline)", "Suricata (baseline)"):
+            if baseline not in data:
+                continue
+            base = data[baseline]
+            fpr_reduction = ((base["fpr"] - sm["fpr"]) / base["fpr"] * 100) if base["fpr"] > 0 else 0
+            fpr_reductions[baseline] = round(fpr_reduction, 2)
+            print(f"    {baseline:<19}: {base['fpr']:.4f} ({base['fpr']*100:.2f}%)")
+            print(f"    SMAR-IA FPR        : {sm['fpr']:.4f} ({sm['fpr']*100:.2f}%)")
+            print(f"    Reducción FPR      : {fpr_reduction:.2f}%")
+            print(f"    Objetivo (≥50%)    : {'✓ CUMPLE' if fpr_reduction >= 50 else '✗ NO CUMPLE'}")
 
     # Guardar CSV
     csv_path = os.path.join(os.path.dirname(__file__), "benchmark_results.csv")
@@ -232,11 +271,11 @@ def _print_report(results: list):
     # Guardar JSON detallado
     json_path = os.path.join(os.path.dirname(__file__), "benchmark_results.json")
     output = {
-        "timestamp": datetime.utcnow().isoformat(),
+        "timestamp": datetime.now(timezone.utc).isoformat(),
         "results": results,
         "hypothesis_h4": {
-            "fpr_reduction_pct": round(fpr_reduction, 2),
-            "target_met": fpr_reduction >= 50,
+            "fpr_reduction_pct": fpr_reductions,
+            "target_met": all(value >= 50 for value in fpr_reductions.values()) if fpr_reductions else False,
         },
     }
     with open(json_path, "w") as f:
@@ -245,17 +284,21 @@ def _print_report(results: list):
 
 
 def main():
+    random.seed(RANDOM_SEED)
+    np.random.seed(RANDOM_SEED)
     print("=" * 70)
-    print("  SMAR-IA · Benchmark comparativo Snort vs SMAR-IA")
-    print("  Hipótesis H4: Reducción de FPR ≥50% respecto a Snort")
+    print("  SMAR-IA · Benchmark comparativo Snort/Suricata vs SMAR-IA")
+    print("  Hipótesis H4: Reducción de FPR ≥50% respecto a IDS de firmas")
     print("=" * 70)
 
     # Cargar modelo SMAR-IA
-    print("\n[1/4] Cargando modelo SMAR-IA...")
+    print("\n[1/5] Cargando modelo SMAR-IA...")
     ml_service.load_models()
     if not ml_service.is_loaded:
         print("ERROR: Modelo SMAR-IA no cargado. Ejecuta ml_pipeline/train_model.py")
         sys.exit(1)
+    if hasattr(ml_service.rf_classifier, "n_jobs"):
+        ml_service.rf_classifier.n_jobs = 1
 
     # Generar dataset de prueba
     print("[2/4] Generando dataset de prueba...")
@@ -269,26 +312,40 @@ def main():
     print(f"  Total muestras: {len(X_test)} ({N_PER_CLASS} por cada una de las {len(ATTACK_CLASSES)} clases)")
 
     # Evaluar Snort
-    print("[3/4] Evaluando Snort (baseline)...")
+    print("[3/5] Evaluando Snort (baseline)...")
     snort_metrics = evaluate_snort(X_test, y_true)
 
+    print("[4/5] Evaluando Suricata (baseline)...")
+    suricata_metrics = evaluate_suricata(X_test, y_true)
+
     # Evaluar SMAR-IA
-    print("[4/4] Evaluando SMAR-IA...")
+    print("[5/5] Evaluando SMAR-IA...")
     smaria_metrics = evaluate_smaria(X_test, y_true)
 
     # Reportar
-    _print_report([snort_metrics, smaria_metrics])
+    _print_report([snort_metrics, suricata_metrics, smaria_metrics])
+
+    if os.getenv("SMAR_IA_BENCHMARK_PLOTS", "true").lower() == "false":
+        print("  Gráficas omitidas por SMAR_IA_BENCHMARK_PLOTS=false")
+        return
 
     # Generar gráfica si matplotlib está disponible
     try:
+        os.environ.setdefault(
+            "MPLCONFIGDIR",
+            os.path.join(os.path.dirname(__file__), ".matplotlib-cache"),
+        )
         import matplotlib
         matplotlib.use("Agg")
         import matplotlib.pyplot as plt
         import seaborn as sns
 
-        # Matriz de confusión para SMAR-IA
-        fig, axes = plt.subplots(1, 2, figsize=(18, 7))
-        for idx, (result, title) in enumerate([(snort_metrics, "Snort (baseline)"), (smaria_metrics, "SMAR-IA")]):
+        fig, axes = plt.subplots(1, 3, figsize=(24, 7))
+        for idx, (result, title) in enumerate([
+            (snort_metrics, "Snort (baseline)"),
+            (suricata_metrics, "Suricata (baseline)"),
+            (smaria_metrics, "SMAR-IA"),
+        ]):
             cm = np.array(result["confusion_matrix"])
             sns.heatmap(cm, annot=True, fmt="d", cmap="Blues", ax=axes[idx],
                         xticklabels=ATTACK_CLASSES, yticklabels=ATTACK_CLASSES)
@@ -305,15 +362,18 @@ def main():
 
         # Gráfica de barras comparativa
         metrics_names = ["Accuracy", "Precision", "Recall", "F1"]
+        metric_keys = ["accuracy", "precision", "recall", "f1_score"]
         fig, ax = plt.subplots(figsize=(10, 6))
         x = np.arange(len(metrics_names))
-        width = 0.35
+        width = 0.25
 
-        snort_vals = [snort_metrics[m.lower().replace("_score", "")] for m in metrics_names]
-        smaria_vals = [smaria_metrics[m.lower().replace("_score", "")] for m in metrics_names]
+        snort_vals = [snort_metrics[key] for key in metric_keys]
+        suricata_vals = [suricata_metrics[key] for key in metric_keys]
+        smaria_vals = [smaria_metrics[key] for key in metric_keys]
 
-        ax.bar(x - width/2, snort_vals, width, label="Snort", color="#e74c3c", alpha=0.8)
-        ax.bar(x + width/2, smaria_vals, width, label="SMAR-IA", color="#2ecc71", alpha=0.8)
+        ax.bar(x - width, snort_vals, width, label="Snort", color="#e74c3c", alpha=0.8)
+        ax.bar(x, suricata_vals, width, label="Suricata", color="#3498db", alpha=0.8)
+        ax.bar(x + width, smaria_vals, width, label="SMAR-IA", color="#2ecc71", alpha=0.8)
         ax.set_ylabel("Puntaje")
         ax.set_title("Comparación de Métricas: Snort vs SMAR-IA")
         ax.set_xticks(x)
@@ -321,9 +381,10 @@ def main():
         ax.legend()
         ax.set_ylim(0, 1.05)
 
-        for i, (sv, smv) in enumerate(zip(snort_vals, smaria_vals)):
-            ax.text(i - width/2, sv + 0.02, f"{sv:.3f}", ha="center", fontsize=8)
-            ax.text(i + width/2, smv + 0.02, f"{smv:.3f}", ha="center", fontsize=8)
+        for i, (snv, suv, smv) in enumerate(zip(snort_vals, suricata_vals, smaria_vals)):
+            ax.text(i - width, snv + 0.02, f"{snv:.3f}", ha="center", fontsize=8)
+            ax.text(i, suv + 0.02, f"{suv:.3f}", ha="center", fontsize=8)
+            ax.text(i + width, smv + 0.02, f"{smv:.3f}", ha="center", fontsize=8)
 
         chart_path2 = os.path.join(os.path.dirname(__file__), "benchmark_metrics.png")
         plt.tight_layout()
