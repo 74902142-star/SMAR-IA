@@ -1,8 +1,8 @@
 import { useState, useEffect, useRef } from 'react';
 import { Row, Col } from 'react-bootstrap';
 import { Terminal, Download, Maximize2, Minimize2, Cpu, Activity, Server, CheckCircle2 } from 'lucide-react';
+import { toast } from 'react-toastify';
 import { apiUrl, wsUrl } from '../api';
-
 
 export default function Logs() {
   const [logs, setLogs] = useState([]);
@@ -83,29 +83,29 @@ export default function Logs() {
   });
 
   const catColor = (cat) => {
-    if (cat === 'CRITICAL_ERR') return 'var(--rose)';
-    if (cat === 'NW_TRAFFIC')   return 'var(--blue)';
-    return 'var(--cyan)';
+    if (cat === 'CRITICAL_ERR') return '#ef4444';
+    if (cat === 'NW_TRAFFIC')   return '#7c3aed';
+    return '#2b0075';
   };
 
   const terminalContent = (
-    <div className="terminal-window" ref={terminalRef}>
-      <div className="terminal-titlebar">
+    <div className="terminal-window" style={{ background: '#0f172a', border: '1px solid #1e293b' }} ref={terminalRef}>
+      <div className="terminal-titlebar" style={{ background: '#1e293b', borderBottom: '1px solid #334155' }}>
         <div className="terminal-dots">
           <span className="dot-r" />
           <span className="dot-y" />
           <span className="dot-g" />
         </div>
-        <div className="terminal-path">
+        <div className="terminal-path" style={{ color: '#94a3b8' }}>
           <Terminal size={13} />
-          <span style={{ color: 'var(--blue)' }}>root</span>
+          <span style={{ color: '#a78bfa' }}>root</span>
           <span className="sep">@</span>
           <span>smar-ia</span>
           <span className="sep">:</span>
-          <span style={{ color: 'var(--emerald)' }}>~/_logs/live</span>
+          <span style={{ color: '#34d399' }}>~/_logs/live</span>
         </div>
-        <div className="terminal-actions">
-          <Download size={14} onClick={handleDownload} style={{cursor:'pointer'}} />
+        <div className="terminal-actions" style={{ color: '#94a3b8' }}>
+          <Download size={14} onClick={handleDownload} style={{cursor:'pointer', marginRight: 10}} />
           {fullscreen
             ? <Minimize2 size={14} onClick={toggleFullscreen} style={{cursor:'pointer'}} />
             : <Maximize2 size={14} onClick={toggleFullscreen} style={{cursor:'pointer'}} />
@@ -113,74 +113,69 @@ export default function Logs() {
         </div>
       </div>
 
-      <div className="terminal-body">
-        <div className="log-entry" style={{ marginBottom: 8, paddingBottom: 8, borderBottom: '1px solid var(--border-subtle)' }}>
-          <span className="log-time" style={{ color: 'var(--emerald)' }}>SMAR-IA</span>
-          <span className="log-msg" style={{ color: 'var(--text-muted)' }}>System log stream initialized · filter: {filter}</span>
+      <div className="terminal-body" style={{ background: '#090d16', color: '#cbd5e1' }}>
+        <div className="log-entry" style={{ marginBottom: 8, paddingBottom: 8, borderBottom: '1px solid #1e293b' }}>
+          <span className="log-time" style={{ color: '#34d399' }}>[SYSTEM]</span>
+          <span className="log-msg" style={{ color: '#64748b' }}>System log stream initialized · filter: {filter}</span>
         </div>
 
         {filtered.map((log, i) => (
           <div key={`${log.timestamp}-${i}`} className={`log-entry ${log.isCritical ? 'critical' : ''}`}>
-            <span className="log-time">[{log.timestamp}]</span>
+            <span className="log-time" style={{ color: '#64748b' }}>[{log.timestamp}]</span>
             <span
               className="log-cat-badge badge-pill"
               style={{
-                background: log.isCritical ? 'rgba(244,63,94,0.1)' : 'rgba(6,182,212,0.1)',
+                background: log.isCritical ? 'rgba(239,68,68,0.15)' : 'rgba(124,58,237,0.15)',
                 color: catColor(log.category),
-                border: `1px solid ${log.isCritical ? 'rgba(244,63,94,0.25)' : 'rgba(6,182,212,0.25)'}`,
-                fontSize: '0.58rem', padding: '1px 7px', flexShrink: 0,
+                fontSize: '0.62rem', padding: '2px 8px', flexShrink: 0,
               }}
             >
               {log.category}
             </span>
-            <span className="log-msg">{log.message}</span>
+            <span className="log-msg" style={{ color: log.isCritical ? '#f87171' : '#cbd5e1' }}>{log.message}</span>
           </div>
         ))}
 
-        <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 10, color: 'var(--text-muted)', fontFamily: "'Space Mono',monospace", fontSize: '0.72rem' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 10, color: '#64748b', fontFamily: "'Space Mono',monospace", fontSize: '0.72rem' }}>
           <span className="blink-cursor" />
-          WAITING FOR DATA PACKETS...
+          ESPERANDO NUEVOS EVENTOS...
         </div>
         <div ref={terminalEndRef} />
       </div>
 
-      <div className="terminal-statusbar">
+      <div className="terminal-statusbar" style={{ background: '#1e293b', borderTop: '1px solid #334155', color: '#94a3b8' }}>
         <div style={{ display: 'flex', gap: 20 }}>
           <span style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-            <span className="status-dot green pulse" /> LIVE FEED
+            <span className="status-dot green pulse" style={{ width: 6, height: 6 }} /> LIVE STREAM
           </span>
-          <span style={{ color: 'rgba(255,255,255,0.2)' }}>·</span>
-          <span>VERBOSE MODE: <span style={{ color: 'var(--text-muted)' }}>OFF</span></span>
         </div>
-        <span>LINES: <span style={{ color: 'var(--text-white)' }}>{filtered.length}</span></span>
+        <span>LÍNEAS: <span style={{ color: '#ffffff', fontWeight: 'bold' }}>{filtered.length}</span></span>
       </div>
     </div>
   );
 
   if (fullscreen) {
     return (
-      <div style={{ position: 'fixed', inset: 0, zIndex: 9999, background: 'var(--bg-base)', padding: 12 }}>
+      <div style={{ position: 'fixed', inset: 0, zIndex: 9999, background: '#090d16', padding: 12 }}>
         {terminalContent}
       </div>
     );
   }
 
   return (
-    <div className="logs-page">
-      <div style={{ display: 'flex', alignItems: 'flex-end', justifyContent: 'space-between' }}>
-        <div className="page-header" style={{ marginBottom: 0 }}>
-          <h1>System Log Stream</h1>
-          <p>Real-time network audit &amp; AI decision telemetry</p>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 24 }} className="campus-dashboard">
+      
+      {/* Header */}
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 16 }}>
+        <div>
+          <h1 className="white-widget-title" style={{ fontSize: '1.8rem', marginBottom: 4 }}>Registros del Sistema</h1>
+          <p className="white-widget-subtitle">Auditoría en tiempo real y flujo de telemetría de decisiones de la IA.</p>
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: '0.72rem', fontFamily: "'Space Mono',monospace", color: 'var(--text-muted)' }}>
-            <span className="status-dot emerald pulse" />
-            LIVE FEED
-          </div>
           <select
             value={filter}
             onChange={e => setFilter(e.target.value)}
-            className="logs-filter-select"
+            style={{ background: '#ffffff', border: '1px solid #cbd5e1', borderRadius: '6px', color: '#1e293b', padding: '8px 12px', fontSize: '0.82rem' }}
           >
             <option value="ALL">TODOS LOS EVENTOS</option>
             <option value="CRITICAL">SOLO CRÍTICOS</option>
@@ -189,97 +184,76 @@ export default function Logs() {
         </div>
       </div>
 
-      <Row className="g-3">
-        <Col lg={3}>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-            {[
-              { label: 'TOTAL EVENTOS / SESIÓN', value: stats.total.toLocaleString(), color: 'blue' },
-              { label: 'ANOMALÍAS CRÍTICAS',     value: String(stats.critical),       color: 'rose' },
-              { label: 'LÍNEAS RENDERIZADAS',    value: String(filtered.length),      color: 'cyan' },
-            ].map(({ label, value, color }) => (
-              <div key={label} className="log-sidebar-stat">
-                <div className="log-sidebar-label">{label}</div>
-                <div className={`log-sidebar-value text-${color}`}>{value}</div>
-              </div>
-            ))}
-
-            <div className="widget" style={{ overflow: 'hidden' }}>
-              <div style={{ padding: '12px 14px', borderBottom: '1px solid var(--border-subtle)' }}>
-                <div style={{ fontSize: '0.65rem', letterSpacing: '1.5px', color: 'var(--amber)', fontWeight: 700, marginBottom: 2 }}>NETWORK_TOPOLOGY</div>
-                <div style={{ fontSize: '0.8rem', fontWeight: 600 }}>Sub-Sector 7-B Status</div>
-              </div>
-              <div style={{ height: 80, position: 'relative', overflow: 'hidden', background: 'var(--input-bg)' }}>
-                <div style={{
-                  position: 'absolute', left: 0, right: 0, height: '1px',
-                  background: 'linear-gradient(90deg, transparent, var(--blue), transparent)',
-                  animation: 'scanline 2.5s linear infinite',
-                }} />
-                <style>{`@keyframes scanline { 0%{top:0%} 100%{top:100%} }`}</style>
-                <div style={{
-                  position: 'absolute', inset: 0, opacity: 0.15,
-                  backgroundImage: 'linear-gradient(var(--blue) 1px, transparent 1px), linear-gradient(90deg, var(--blue) 1px, transparent 1px)',
-                  backgroundSize: '20px 20px',
-                }} />
-              </div>
+      <div className="dashboard-layout-row" style={{ gridTemplateColumns: '1fr 3fr' }}>
+        {/* Left column: stats and category filters */}
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
+          {[
+            { label: 'TOTAL EVENTOS / SESIÓN', value: stats.total.toLocaleString(), color: '#7c3aed' },
+            { label: 'ANOMALÍAS CRÍTICAS',     value: String(stats.critical),       color: '#ef4444' },
+            { label: 'LÍNEAS REGISTRADAS',    value: String(filtered.length),      color: '#7c3aed' },
+          ].map((item, idx) => (
+            <div key={idx} className="kpi-card" style={{ padding: 16 }}>
+              <span className="kpi-label" style={{ fontSize: '0.72rem' }}>{item.label}</span>
+              <span className="kpi-value" style={{ fontSize: '1.4rem', color: item.color }}>{item.value}</span>
             </div>
+          ))}
 
-            <div className="widget">
-              <div className="widget-header">
-                <div className="widget-title">Categorías</div>
-              </div>
-              <div style={{ padding: '12px 16px', display: 'flex', flexDirection: 'column', gap: 12 }}>
-                {[
-                  { key: 'network',  label: 'Network Events',    color: 'blue' },
-                  { key: 'security', label: 'Security Audits',   color: 'amber' },
-                  { key: 'ai',       label: 'AI Decision Logs',  color: 'rose' },
-                ].map(({ key, label, color }) => (
-                  <div key={key} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                      <span style={{ width: 8, height: 8, borderRadius: '50%', background: `var(--${color})`, display: 'inline-block' }} />
-                      <span style={{ fontSize: '0.78rem', color: 'var(--text-secondary)' }}>{label}</span>
-                    </div>
-                    <label className="toggle-wrapper">
-                      <input
-                        type="checkbox"
-                        checked={categories[key]}
-                        onChange={() => setCategories(prev => ({ ...prev, [key]: !prev[key] }))}
-                      />
-                      <span className="toggle-slider" />
-                    </label>
+          {/* Categories card */}
+          <div className="white-widget" style={{ padding: 16 }}>
+            <div className="white-widget-header" style={{ marginBottom: 12, paddingBottom: 8, borderBottom: '1px solid #e2e8f0' }}>
+              <h3 className="white-widget-title" style={{ fontSize: '0.9rem' }}>Categorías</h3>
+            </div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+              {[
+                { key: 'network',  label: 'Tráfico de Red',    color: '#7c3aed' },
+                { key: 'security', label: 'Auditoría',   color: '#2b0075' },
+                { key: 'ai',       label: 'Decisiones IA',  color: '#ef4444' },
+              ].map(({ key, label, color }) => (
+                <div key={key} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                    <span style={{ width: 8, height: 8, borderRadius: '50%', background: color, display: 'inline-block' }} />
+                    <span style={{ fontSize: '0.78rem', color: '#475569', fontWeight: 600 }}>{label}</span>
                   </div>
-                ))}
+                  <input
+                    type="checkbox"
+                    checked={categories[key]}
+                    onChange={() => setCategories(prev => ({ ...prev, [key]: !prev[key] }))}
+                    style={{ cursor: 'pointer', accentColor: '#2b0075', width: 15, height: 15 }}
+                  />
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+
+        {/* Right column: Terminal window */}
+        <div>
+          {terminalContent}
+        </div>
+      </div>
+
+      {/* Bottom info panels */}
+      <div className="kpi-container">
+        {[
+          { icon: Cpu,          label: 'USO DE MEMORIA',  value: '4.2 GB / 32 GB' },
+          { icon: Activity,     label: 'CARGA DEL CLUSTER',   value: '64%' },
+          { icon: CheckCircle2, label: 'SINCRONIZACIÓN',      value: 'Al día' },
+          { icon: Server,       label: 'NODOS EN LÍNEA',  value: '1,024 Nodos' },
+        ].map((stat, i) => (
+          <div key={i} className="kpi-card" style={{ padding: 16 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+              <div className="kpi-icon-box" style={{ width: 32, height: 32 }}>
+                <stat.icon size={16} />
+              </div>
+              <div>
+                <span className="kpi-label" style={{ fontSize: '0.65rem' }}>{stat.label}</span>
+                <span className="kpi-value" style={{ fontSize: '0.9rem', color: '#1e293b' }}>{stat.value}</span>
               </div>
             </div>
           </div>
-        </Col>
-
-        <Col lg={9}>
-          {terminalContent}
-        </Col>
-      </Row>
-
-      <Row className="g-3">
-        {[
-          { icon: Cpu,          label: 'MEMORY USAGE',  value: '4.2 GB / 32 GB', color: 'blue' },
-          { icon: Activity,     label: 'CPU CLUSTER',   value: '64% Load',       color: 'rose' },
-          { icon: CheckCircle2, label: 'HUB SYNC',      value: 'Synced Now',     color: 'emerald' },
-          { icon: Server,       label: 'ACTIVE NODES',  value: '1,024 Nodes',    color: 'cyan' },
-        ].map(({ icon: Icon, label, value, color }) => (
-          <Col key={label} md={3}>
-            <div className="widget">
-              <div style={{ display: 'flex', alignItems: 'center', gap: 14, padding: '16px 18px' }}>
-                <div style={{ width: 40, height: 40, borderRadius: 'var(--radius-sm)', background: `rgba(${color === 'blue' ? '59,130,246' : color === 'rose' ? '244,63,94' : color === 'emerald' ? '16,185,129' : '6,182,212'},0.1)`, display: 'flex', alignItems: 'center', justifyContent: 'center', color: `var(--${color})`, flexShrink: 0 }}>
-                  <Icon size={18} />
-                </div>
-                <div>
-                  <div style={{ fontSize: '0.62rem', letterSpacing: '1.5px', color: 'var(--text-muted)', marginBottom: 4, fontWeight: 700 }}>{label}</div>
-                  <div style={{ fontSize: '0.9rem', fontWeight: 700, color: 'var(--text-white)' }}>{value}</div>
-                </div>
-              </div>
-            </div>
-          </Col>
         ))}
-      </Row>
+      </div>
+
     </div>
   );
 }

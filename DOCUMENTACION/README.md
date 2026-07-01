@@ -18,6 +18,8 @@
 | [Sprint_3_MVP_Cumplimiento_ISO.md](./Sprint_3_MVP_Cumplimiento_ISO.md) | Sprint 3 (MVP) | Logs JSON, hash SHA-256, controles ISO |
 | [Sprint_4_Dashboard_y_UX.md](./Sprint_4_Dashboard_y_UX.md) | Sprint 4 | Frontend React, Dashboard, páginas |
 | [Sprint_5_Optimizacion_y_Cierre.md](./Sprint_5_Optimizacion_y_Cierre.md) | Sprint 5 | Pruebas de estrés, rendimiento, docs finales |
+| [Sprint_6_Implementacion_Final.md](./Sprint_6_Implementacion_Final.md) | Sprint 6 | Implementación final y despliegue en producción |
+| [plan_de_pruebas/README_PLAN_PRUEBAS.md](./plan_de_pruebas/README_PLAN_PRUEBAS.md) | Pruebas | Plan integral de pruebas de calidad, rendimiento e integridad |
 
 ---
 

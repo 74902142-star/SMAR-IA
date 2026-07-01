@@ -11,12 +11,12 @@ import {
 
 
 const NAV_ITEMS = [
-  { to: '/',           label: 'Panel de Control', icon: LayoutDashboard, end: true },
-  { to: '/traffic',    label: 'Alertas',           icon: Bell },
-  { to: '/mitigation', label: 'Mitigación',        icon: Shield },
-  { to: '/rules',      label: 'Reglas',            icon: ScrollText },
-  { to: '/logs',       label: 'Registros',         icon: Terminal },
-  { to: '/settings',  label: 'Configuración',     icon: Settings },
+  { to: '/',           label: 'Panel Principal', icon: LayoutDashboard, end: true },
+  { to: '/traffic',    label: 'Análisis de Tráfico', icon: Activity },
+  { to: '/mitigation', label: 'Detección de Amenazas', icon: Shield },
+  { to: '/rules',      label: 'Reglas de Mitigación', icon: ScrollText },
+  { to: '/settings',   label: 'Configuración ML', icon: Settings },
+  { to: '/logs',       label: 'Registros', icon: Terminal },
 ];
 
 export default function Layout() {
@@ -122,15 +122,38 @@ export default function Layout() {
         </nav>
 
         <div className="sidebar-bottom">
-          <div className="sidebar-system-status">
-            <div className="label">ESTADO DEL SISTEMA</div>
-            <div className="value">
-              <span className={`status-dot ${dotClass} pulse`} />
-              <span style={{color: dotClass === 'green' ? 'var(--emerald)' : dotClass === 'red' ? 'var(--rose)' : 'var(--amber)'}}>{statusLabel}</span>
+          <div style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: '10px',
+            padding: '12px',
+            backgroundColor: '#f1f5f9',
+            border: '1px solid #cbd5e1',
+            borderRadius: '8px',
+            marginBottom: '12px'
+          }}>
+            <div style={{
+              width: '36px',
+              height: '36px',
+              borderRadius: '6px',
+              backgroundColor: '#4b1a9e',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              color: '#ffffff',
+              fontWeight: 700,
+              fontSize: '0.85rem',
+              flexShrink: 0
+            }}>
+              AD
             </div>
-            <div className="value" style={{marginTop:4, fontSize:'0.65rem', color:'var(--text-muted)'}}>
-              <Activity size={11} style={{marginRight:4}} />
-              {systemHealth.uptime}
+            <div style={{ minWidth: 0 }}>
+              <div style={{ fontSize: '0.85rem', fontWeight: 700, color: '#1e293b', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                {user?.username || 'Usuario Admin'}
+              </div>
+              <div style={{ fontSize: '0.7rem', color: '#64748b', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                Líder de Seguridad
+              </div>
             </div>
           </div>
           <button className="sidebar-nav-item" onClick={logout} style={{color:'var(--rose)'}}>

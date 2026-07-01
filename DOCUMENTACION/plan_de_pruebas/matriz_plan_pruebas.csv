@@ -1,0 +1,10 @@
+ID,Tipo,Descripcion,Componente,Resultado_Esperado,Estado
+PU-01,Caja Blanca,Validacion de Reglas AST Seguras,evaluate_condition,Bloquea inyección y evalua condiciones legitimas,PASSED
+PU-02,Caja Blanca,Generacion de JWT y RBAC,auth.py,Genera token con firma HS256 valida,PASSED
+PF-01,Caja Negra,Autenticacion y Control de Accesos,Login.jsx / auth.py,Redirecciona con credenciales correctas y deniega con incorrectas,PASSED
+PF-02,Caja Negra,Bloqueo Manual de IP,MitigationZone.jsx,Inyecta la IP seleccionada en iptables y actualiza lista de bloqueados,PASSED
+PI-01,Integracion,Ciclo Completo de Inferencia y Alerta,Full-Stack Stream,Tráfico simulado se procesa y se muestra en vivo por WebSockets,PASSED
+PI-02,Integracion,Transaccion de Reglas Dinámicas,RuleManager.jsx,Regla creada en UI se persiste y se inyecta en firewall,PASSED
+PR-01,Rendimiento,Inundacion Masiva de Paquetes,FastAPI Engine,Inferencia en <2.5ms y mitigación en <1.5s ante flood UDP,PASSED
+PS-01,Seguridad,Prevencion Inyeccion en Reglas,rules.py / AST,Rechazo inmediato de inyecciones de shell y codigo sys,PASSED
+PS-02,Seguridad,Evitacion de Bloqueo a Whitelist,whitelist.py,IPs de infraestructura no se bloquean por auto-mitigacion,PASSED

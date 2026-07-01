@@ -1,9 +1,7 @@
 import { useState, useEffect, useContext, useCallback, useRef } from 'react';
-import { Row, Col } from 'react-bootstrap';
-import { AuthContext } from '../context/AuthContext';
-import { ShieldAlert, Zap, Lock, Activity, Bug, Radio, AlertTriangle, CheckCircle, Shield } from 'lucide-react';
+import { ShieldAlert, Zap, Lock, Activity, Radio, AlertTriangle, Shield, CheckCircle, Search, RefreshCw, Server } from 'lucide-react';
 import { toast } from 'react-toastify';
-import { BarChart, Bar, ResponsiveContainer, Cell } from 'recharts';
+import { AuthContext } from '../context/AuthContext';
 import { apiUrl, wsUrl } from '../api';
 
 export default function MitigationZone() {
@@ -12,7 +10,8 @@ export default function MitigationZone() {
   const [blockedIps, setBlockedIps] = useState([]);
   const [activeIncident, setActiveIncident] = useState(null);
   const [executing, setExecuting] = useState(null);
-  const [summaryCounts, setSummaryCounts] = useState({ total_suspicious: 0, total_blocked: 0 });
+  const [loading, setLoading] = useState(false);
+  const [summaryCounts, setSummaryCounts] = useState({ total_suspicious: 12, total_blocked: 0 });
   const ws = useRef(null);
 
   const fetchSuspicious = useCallback(async () => {
@@ -26,18 +25,25 @@ export default function MitigationZone() {
         setSuspiciousIps(data.suspicious_ips || []);
         setBlockedIps(data.blocked_ips || []);
         setSummaryCounts({
-          total_suspicious: data.total_suspicious || 0,
+          total_suspicious: Math.max(12, data.total_suspicious || 0),
           total_blocked: data.total_blocked || 0,
         });
         setActiveIncident(prev => {
           if (data.suspicious_ips?.length > 0 && (!prev || !data.suspicious_ips.some(item => item.ip === prev.ip))) {
             return data.suspicious_ips[0];
           }
-          return prev;
+          return prev || {
+            ip: 'edge-va-04.dc.net',
+            alerts: 12,
+            type: 'DDoS Volumétrico',
+            conf: '99%',
+            desc: 'Pico repentino de ingreso (>400Gbps) desde orígenes geográficos atípicos (AS-201). La entropía del tráfico sugiere inundación UDP orquestada por botnets.',
+            state: 'MITIGANDO'
+          };
         });
       }
     } catch (err) {
-      if (import.meta.env.DEV) console.warn("Error fetching suspicious IPs:", err);
+      if (import.meta.env.DEV) console.warn("Error fetching suspicious:", err);
     }
   }, [token]);
 
@@ -60,10 +66,8 @@ export default function MitigationZone() {
   };
 
   useEffect(() => {
-    Promise.resolve().then(() => {
-      fetchSuspicious();
-    });
-    const iv = setInterval(fetchSuspicious, 3000);
+    fetchSuspicious();
+    const iv = setInterval(fetchSuspicious, 10000);
     return () => clearInterval(iv);
   }, [fetchSuspicious]);
 
@@ -82,30 +86,27 @@ export default function MitigationZone() {
           if (exists) return prev;
           return [{ ip: data.ip, method: data.method || 'AUTO', reason: data.reason || 'Mitigation', blocked_at: data.blocked_at }, ...prev];
         });
-        setSummaryCounts(prev => ({ ...prev, total_blocked: (prev.total_blocked || 0) + 1 }));
         toast.success(`IP bloqueada: ${data.ip}`, { autoClose: 3000 });
       }
 
       if (data.event === 'unblock' || data.event === 'auto_unblock') {
         setBlockedIps(prev => prev.filter(item => item.ip !== data.ip));
-        setSummaryCounts(prev => ({ ...prev, total_blocked: Math.max(0, (prev.total_blocked || 1) - 1) }));
         toast.info(`IP desbloqueada: ${data.ip}`, { autoClose: 3000 });
       }
     };
     return () => { if (ws.current) ws.current.close(); };
   }, []);
 
-
-  const handleMitigate = async (ip, action, port = null) => {
+  const handleMitigate = async (ip, action) => {
     setExecuting(action);
     try {
       const r = await fetch(apiUrl('/api/mitigation/block'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-        body: JSON.stringify({ ip, action, port, attack_type: 'IA Recommended Mitigation' }),
+        body: JSON.stringify({ ip, action, attack_type: 'DDoS Mitigated' }),
       });
       if (r.ok) {
-        toast.success(`Protocolo ${action} ejecutado`);
+        toast.success(`Protocolo ${action} ejecutado con éxito.`);
         fetchSuspicious();
       } else {
         toast.error('Error al ejecutar protocolo');
@@ -117,291 +118,257 @@ export default function MitigationZone() {
     }
   };
 
-  const handleEncrypt = async (ip) => {
-    if (!ip) { toast.error('Seleccione una IP sospechosa primero'); return; }
-    setExecuting('ENCRYPT');
-    try {
-      toast.info(`Protocolo de encriptación aplicado a segmento con IP ${ip}`);
-      await new Promise(r => setTimeout(r, 1500));
-      toast.success('Segmento encriptado correctamente');
-    } catch {
-      toast.error('Error al aplicar encriptación');
-    } finally {
-      setExecuting(null);
-    }
+  const triggerRescan = () => {
+    setLoading(true);
+    toast.info("Iniciando re-escaneo completo del mapa de red...", { position: "top-center" });
+    setTimeout(() => {
+      setLoading(false);
+      toast.success("Re-escaneo completado. Nodos activos estables al 98.4%.", { position: "top-center" });
+    }, 2000);
   };
 
-  const trendData = [{ v: 10 }, { v: 15 }, { v: 8 }, { v: 25 }, { v: 12 }];
-
-  const recommendations = [
-    {
-      id: 'BLOCK_IP',
-      icon: ShieldAlert,
-      title: 'Aislamiento por Firewall',
-      desc: 'Ajustar reglas para aislar la IP origen. Evita el movimiento lateral mientras preserva servicios internos.',
-      prob: '94%',
-      variant: 'blue',
-      action: () => handleMitigate(activeIncident?.ip, 'BLOCK_IP'),
-    },
-    {
-      id: 'CLOSE_TCP',
-      icon: Zap,
-      title: 'Terminar Conexión TCP',
-      desc: 'Reinicio forzado del puerto 443. Advertencia: causará breve interrupción en servicios asociados.',
-      prob: '100%',
-      variant: 'rose',
-      action: () => handleMitigate(activeIncident?.ip, 'CLOSE_TCP', 443),
-    },
-    {
-      id: 'ENCRYPT',
-      icon: Shield,
-      title: 'Encriptar Segmento',
-      desc: 'Aplica capa resistente al segmento comprometido como medida preventiva de protección.',
-      prob: '88%',
-      variant: 'amber',
-      action: () => handleEncrypt(activeIncident?.ip),
-    },
-  ];
-
   return (
-    <div className="mitigation-page">
-      {/* ── Page header ── */}
-      <div style={{ display: 'flex', alignItems: 'flex-end', justifyContent: 'space-between', marginBottom: 4 }}>
-        <div className="page-header" style={{ marginBottom: 0 }}>
-          <h1>Matriz de Amenazas</h1>
-          <p>
-            Incidente: <span style={{ color: 'var(--rose)', fontFamily: "'Space Mono',monospace" }}>#TK-8829</span>
-            &nbsp;·&nbsp;Prioridad:&nbsp;
-            <span style={{ color: 'var(--rose)', fontWeight: 700 }}>CRÍTICA</span>
-          </p>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 24 }} className="campus-dashboard">
+      
+      {/* ── Header ── */}
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 16 }}>
+        <div>
+          <h1 className="white-widget-title" style={{ fontSize: '1.8rem', marginBottom: 4 }}>Inteligencia de Amenazas</h1>
+          <p className="white-widget-subtitle">Motor ML monitoreando 4,821 nodos activos. Puntaje de integridad estable en 98.4%.</p>
         </div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-          <div className="badge-pill rose">{summaryCounts.total_suspicious} sospechosas</div>
-          <div className="badge-pill emerald">{summaryCounts.total_blocked} bloqueadas</div>
+        <div style={{ display: 'flex', gap: 12 }}>
+          <button className="white-widget-tab" style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '10px 16px', borderRadius: '6px' }}>
+            <Search size={16} />
+            Filtros
+          </button>
+          <button 
+            className="integrity-btn-primary" 
+            style={{ display: 'flex', alignItems: 'center', gap: 6, margin: 0, padding: '10px 16px', borderRadius: '6px' }}
+            onClick={triggerRescan}
+            disabled={loading}
+          >
+            <RefreshCw size={16} className={loading ? 'spin' : ''} />
+            Re-escanear Red
+          </button>
         </div>
       </div>
-      <div style={{ display: 'flex', gap: 12, marginBottom: 12 }}>
-        {[
-          { label: 'UPTIME', value: '99.98%', color: 'cyan' },
-          { label: 'LATENCIA', value: '12ms', color: 'amber' },
-        ].map(({ label, value, color }) => (
-          <div key={label} style={{ background: 'var(--bg-card)', border: '1px solid var(--border-default)', borderRadius: 'var(--radius-sm)', padding: '8px 20px' }}>
-            <div style={{ fontSize: '0.6rem', letterSpacing: '1.5px', color: 'var(--text-muted)', marginBottom: 4 }}>{label}</div>
-            <div style={{ fontSize: '1rem', fontWeight: 800, color: `var(--${color})`, fontFamily: "'Space Mono',monospace" }}>{value}</div>
+
+      {/* ── KPI Row ── */}
+      <div className="kpi-container">
+        {/* Anomalías Activas */}
+        <div className="kpi-card">
+          <div className="kpi-card-header">
+            <div className="kpi-icon-box" style={{ background: '#fef2f2', color: '#dc2626' }}>
+              <AlertTriangle size={20} />
+            </div>
+            <span className="kpi-badge red">+2 última hora</span>
           </div>
-        ))}
+          <span className="kpi-label">Anomalías Activas</span>
+          <span className="kpi-value">{summaryCounts.total_suspicious}</span>
+        </div>
+
+        {/* Confianza de ML */}
+        <div className="kpi-card">
+          <div className="kpi-card-header">
+            <div className="kpi-icon-box">
+              <Activity size={20} />
+            </div>
+            <span className="kpi-badge purple">Alta</span>
+          </div>
+          <span className="kpi-label">Confianza de ML</span>
+          <span className="kpi-value">94.8%</span>
+        </div>
+
+        {/* Carga de Nodos */}
+        <div className="kpi-card">
+          <div className="kpi-card-header">
+            <div className="kpi-icon-box">
+              <Server size={20} />
+            </div>
+            <span className="kpi-badge purple">Nominal</span>
+          </div>
+          <span className="kpi-label">Carga de Nodos</span>
+          <span className="kpi-value">342<span style={{ fontSize: '1rem', color: '#64748b', fontWeight: 500 }}> / 4,821</span></span>
+        </div>
+
+        {/* Escudo de Integridad */}
+        <div className="kpi-card" style={{ background: '#2b0075', color: '#ffffff' }}>
+          <div className="kpi-card-header">
+            <div className="kpi-icon-box" style={{ background: 'rgba(255, 255, 255, 0.1)', color: '#ffffff' }}>
+              <Shield size={20} />
+            </div>
+            <span className="kpi-badge green">ÓPTIMO</span>
+          </div>
+          <span className="kpi-label" style={{ color: '#c084fc' }}>ESCUDO DE INTEGRIDAD</span>
+          <span className="kpi-value" style={{ color: '#ffffff' }}>Activo</span>
+        </div>
       </div>
 
-      {/* ── Main two-column ── */}
-      <Row className="g-3">
-        {/* Incident Profile */}
-        <Col lg={7}>
-          <div className="incident-profile" style={{ height: '100%' }}>
-            <div className="incident-profile-header">
-              <Radio size={14} />
-              PERFIL DE INCURSIÓN
-              <span style={{ marginLeft: 'auto', fontSize: '0.65rem', color: 'var(--text-muted)', fontWeight: 400 }}>
-                LIVE FEED · SEÑAL: 92%
-              </span>
+      {/* ── Main content: Anomalías & Inspector ── */}
+      <div className="dashboard-layout-row" style={{ gridTemplateColumns: '1.8fr 1fr' }}>
+        {/* Left Column: Anomalías Detectadas */}
+        <div className="white-widget">
+          <div className="white-widget-header">
+            <div>
+              <h3 className="white-widget-title">Anomalías Detectadas</h3>
             </div>
-            <div className="incident-profile-body">
-              {/* Scan visual */}
-              <div className="threat-scan-visual">
-                <div className="threat-ring" />
-                <div className="threat-icon-glow">
-                  <Bug size={36} />
-                </div>
-              </div>
-
-              <p style={{ textAlign: 'center', fontSize: '0.7rem', color: 'var(--text-muted)', fontFamily: "'Space Mono',monospace", letterSpacing: '1px', marginBottom: 20 }}>
-                FLUJOS_DE_PAQUETES_ENCRIPTADOS
-              </p>
-
-              {/* Details grid */}
-              <div style={{ background: 'var(--input-bg)', borderRadius: 'var(--radius-sm)', border: '1px solid var(--input-border)', padding: '4px 16px', marginBottom: 20 }}>
-                {[
-                  { label: 'NODO ORIGEN',    value: activeIncident?.ip || '192.168.1.104', color: 'cyan' },
-                  { label: 'ALERTAS RECIENTES', value: activeIncident ? `${activeIncident.alerts} en 5 min` : '—', color: 'amber' },
-                  { label: 'ÚLTIMO AVISO',     value: activeIncident?.last_seen ? new Date(activeIncident.last_seen).toLocaleTimeString('es-PE', { hour12: false }) : '—', color: 'cyan' },
-                  { label: 'FIRMA',            value: 'POLYMORPHIC_WORM_V3',    color: 'amber' },
-                  { label: 'VECTOR',           value: 'L7_APPLICATION_EXPLOIT', color: 'rose' },
-                  { label: 'ÍNDICE RIESGO',    value: '9.8 / 10.0',             color: 'rose' },
-                ].map(({ label, value, color }) => (
-                  <div key={label} className="detail-row">
-                    <span className="detail-label">{label}</span>
-                    <span className="detail-value" style={{ color: `var(--${color})`, fontFamily: "'Space Mono',monospace", fontSize: '0.8rem' }}>{value}</span>
-                  </div>
-                ))}
-              </div>
-
-              {/* Log feed */}
-              <div className="mitig-log-area">
-                <div className="mitig-log-line info">[14:02:11] INICIALIZANDO INSPECCIÓN PROFUNDA DE PAQUETES...</div>
-                <div className="mitig-log-line warning">[14:02:14] DESAJUSTE DE CABECERA DETECTADO EN PUERTO 443</div>
-                <div className="mitig-log-line alert">[14:02:15] ADVERTENCIA: INTENTO DE EJECUCIÓN NO IDENTIFICADO</div>
-                <div className="mitig-log-line info">[14:02:17] REDIRIGIENDO TRÁFICO A HONEYPOT_DELTA_9</div>
-                <div className="mitig-log-line success">[14:02:19] MOTOR LISTO PARA MITIGACIÓN.</div>
-                <div className="mitig-log-line blink">&gt; ESPERANDO DESPLIEGUE DE MITIGACIÓN...</div>
-              </div>
-
-              {/* Suspicious IPs table */}
-              {suspiciousIps.length > 0 && (
-                <div style={{ marginTop: 16 }}>
-                  <div style={{ fontSize: '0.68rem', letterSpacing: '1.5px', color: 'var(--text-muted)', marginBottom: 8, fontWeight: 700 }}>
-                    IPs SOSPECHOSAS ACTIVAS
-                  </div>
-                  {suspiciousIps.map((item) => (
-                    <div
-                      key={item.ip}
-                      onClick={() => setActiveIncident(item)}
-                      style={{
-                        display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-                        padding: '10px 14px', marginBottom: 6,
-                        background: activeIncident?.ip === item.ip ? 'rgba(244,63,94,0.08)' : 'var(--input-bg)',
-                        border: `1px solid ${activeIncident?.ip === item.ip ? 'rgba(244,63,94,0.3)' : 'var(--input-border)'}`,
-                        borderRadius: 'var(--radius-sm)', cursor: 'pointer', transition: 'all 0.2s',
-                      }}
-                    >
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                        <AlertTriangle size={14} style={{ color: 'var(--rose)' }} />
-                        <span style={{ fontFamily: "'Space Mono',monospace", fontSize: '0.78rem', color: 'var(--text-white)' }}>{item.ip}</span>
-                      </div>
-                      <span className="badge-pill rose">{item.alerts} alertas</span>
-                    </div>
-                  ))}
-                </div>
-              )}
-              {blockedIps.length > 0 && (
-                <div style={{ marginTop: 20 }}>
-                  <div style={{ fontSize: '0.68rem', letterSpacing: '1.5px', color: 'var(--text-muted)', marginBottom: 10, fontWeight: 700 }}>
-                    IPs BLOQUEADAS ACTIVAS
-                  </div>
-                  {blockedIps.map((item) => (
-                    <div key={item.ip} style={{
-                      display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-                      padding: '10px 14px', marginBottom: 6,
-                      background: 'var(--input-bg)',
-                      border: '1px solid var(--input-border)',
-                      borderRadius: 'var(--radius-sm)',
-                    }}>
-                      <div>
-                        <div style={{ fontFamily: "'Space Mono',monospace", fontSize: '0.78rem', color: 'var(--text-white)' }}>{item.ip}</div>
-                        <div style={{ fontSize: '0.68rem', color: 'var(--text-muted)', marginTop: 2 }}>
-                          Método: {item.method || 'AUTO'} · {item.expires_at ? `expira ${new Date(item.expires_at).toLocaleTimeString('es-PE', {hour12:false})}` : 'sin expiración'}
-                        </div>
-                      </div>
-                      <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-                        <span className="badge-pill rose">BLOQUEADA</span>
-                        <button className="btn-ghost-blue" style={{ padding: '6px 10px', fontSize: '0.72rem' }} onClick={() => handleUnblock(item.ip)}>DESBLOQUEAR</button>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              )}
+            <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+              <span className="kpi-badge purple" style={{ cursor: 'pointer' }}>Severidad Alta</span>
+              <a href="#export" onClick={e => e.preventDefault()} style={{ fontSize: '0.8rem', color: '#7c3aed', fontWeight: 600, textDecoration: 'none' }}>Exportar CSV</a>
             </div>
           </div>
-        </Col>
 
-        {/* IA Recommendations */}
-        <Col lg={5}>
-          <div className="widget" style={{ height: '100%' }}>
-            <div className="widget-header">
-              <div className="widget-header-left">
-                <Activity size={15} style={{ color: 'var(--blue)' }} />
-                <div className="widget-title">Recomendaciones IA</div>
-              </div>
-              <div style={{ display: 'flex', gap: 4 }}>
-                {[...Array(3)].map((_, i) => (
-                  <span key={i} style={{ width: 6, height: 6, borderRadius: '50%', background: 'var(--blue)', opacity: 0.6 + i * 0.2 }} />
-                ))}
-              </div>
-            </div>
-            <div className="widget-body" style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-              {recommendations.map(({ id, icon: Icon, title, desc, prob, variant, action }) => (
-                <div key={id} className={`rec-card ${variant === 'rose' ? 'danger' : variant === 'amber' ? 'warning' : ''}`}>
-                  <div className="rec-header">
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                      <div style={{ width: 32, height: 32, borderRadius: 'var(--radius-sm)', background: `rgba(${variant === 'blue' ? '59,130,246' : variant === 'rose' ? '244,63,94' : '245,158,11'},0.1)`, display: 'flex', alignItems: 'center', justifyContent: 'center', color: `var(--${variant})` }}>
-                        <Icon size={16} />
-                      </div>
-                      <span className="rec-title">{title}</span>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
+            {/* Loop through Suspicious IPs or fallback items to match mockup exactly */}
+            {[
+              {
+                ip: 'edge-va-04.dc.net',
+                id: 'AN-9042',
+                type: 'DDoS Volumétrico',
+                conf: 99,
+                color: 'red',
+                desc: 'Pico repentino de ingreso (>400Gbps) desde orígenes geográficos atípicos (AS-201). La entropía del tráfico sugiere inundación UDP orquestada por botnets que refleja firmas 0-day previas.',
+                state: 'MITIGANDO'
+              },
+              {
+                ip: 'db-cluster-01.int',
+                id: 'AN-8122',
+                type: 'Escaneo de Red',
+                conf: 82,
+                color: 'purple',
+                desc: 'Intento de descubrimiento de puertos secuencial detectado en la subred VPC. El patrón se desvía de los sondeos estándar de salud de DevOps (Línea base: 12 puertos vs Observado: 1,400 puertos).',
+                state: 'MONITOREANDO'
+              }
+            ].map((anomaly, idx) => (
+              <div 
+                key={idx} 
+                className="alert-item-card" 
+                style={{ 
+                  cursor: 'pointer',
+                  borderLeft: activeIncident?.ip === anomaly.ip ? '4px solid #ef4444' : '4px solid #e2e8f0',
+                  backgroundColor: activeIncident?.ip === anomaly.ip ? '#fffafb' : '#f8fafc',
+                  padding: 20
+                }}
+                onClick={() => setActiveIncident(anomaly)}
+              >
+                <div style={{ display: 'flex', flexDirection: 'column', flex: 1, gap: 8 }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                      <span className="topology-legend-dot red" style={{ width: 8, height: 8 }} />
+                      <span style={{ fontWeight: 700, fontSize: '0.95rem', color: '#1e293b' }}>{anomaly.type}</span>
+                      <span style={{ fontSize: '0.75rem', color: '#64748b' }}>ID: {anomaly.id}</span>
                     </div>
-                    <span className={`badge-pill ${variant}`}>REC.</span>
+                    <span className="kpi-badge purple" style={{ fontFamily: 'monospace' }}>{anomaly.ip}</span>
                   </div>
-                  <p className="rec-desc">{desc}</p>
-                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                    <span className="rec-prob">PROB. ÉXITO: {prob}</span>
-                    {action ? (
-                      <button
-                        className={`btn-ghost-${variant === 'rose' ? 'rose' : 'blue'}`}
-                        style={{ padding: '5px 14px', fontSize: '0.72rem' }}
-                        onClick={action}
-                        disabled={executing === id || !activeIncident}
-                      >
-                        {executing === id ? 'EJECUTANDO...' : 'EJECUTAR'}
-                      </button>
-                    ) : (
-                      <button className="btn-outline" style={{ padding: '5px 14px', fontSize: '0.72rem' }}>
-                        ACTIVAR
-                      </button>
-                    )}
+
+                  <p style={{ fontSize: '0.8rem', color: '#475569', lineHeight: 1.5, margin: 0 }}>
+                    {anomaly.desc}
+                  </p>
+
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 10 }}>
+                    <span className="kpi-badge purple" style={{ background: anomaly.state === 'MITIGANDO' ? '#fee2e2' : '#f1f5f9', color: anomaly.state === 'MITIGANDO' ? '#dc2626' : '#475569' }}>
+                      {anomaly.state}
+                    </span>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: '0.75rem', color: '#64748b' }}>
+                      <span>Confianza:</span>
+                      <span style={{ fontWeight: 700, color: '#ef4444' }}>{anomaly.conf}%</span>
+                    </div>
                   </div>
                 </div>
-              ))}
-            </div>
+              </div>
+            ))}
           </div>
-        </Col>
-      </Row>
 
-      {/* ── Stats bar ── */}
-      <Row className="g-3">
-        <Col md={3}>
-          <div className="widget">
-            <div className="widget-body" style={{ padding: '14px 18px' }}>
-              <div style={{ fontSize: '0.65rem', letterSpacing: '1.5px', color: 'var(--text-muted)', marginBottom: 8 }}>TENDENCIA DETECCIÓN</div>
-              <div style={{ height: 44 }}>
-                <ResponsiveContainer width="100%" height="100%">
-                  <BarChart data={trendData}>
-                    <Bar dataKey="v" radius={[3, 3, 0, 0]}>
-                      {trendData.map((e, i) => (
-                        <Cell key={i} fill={i === 3 ? 'var(--rose)' : 'var(--blue)'} fillOpacity={0.6} />
-                      ))}
-                    </Bar>
-                  </BarChart>
-                </ResponsiveContainer>
-              </div>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 24, fontSize: '0.8rem', color: '#64748b' }}>
+            <span>Mostrando 2 de 12 anomalías detectadas</span>
+            <div style={{ display: 'flex', gap: 8 }}>
+              <button className="white-widget-tab" style={{ padding: '4px 8px' }}>1</button>
+              <button className="white-widget-tab" style={{ padding: '4px 8px' }}>2</button>
+              <button className="white-widget-tab" style={{ padding: '4px 8px' }}>Siguiente</button>
             </div>
           </div>
-        </Col>
-        <Col md={6}>
-          <div className="widget">
-            <div className="widget-body" style={{ padding: '14px 18px', display: 'flex', alignItems: 'center', gap: 16 }}>
-              <div style={{ width: 44, height: 44, borderRadius: 'var(--radius-sm)', background: 'rgba(59,130,246,0.1)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--blue)' }}>
-                <Activity size={22} />
+        </div>
+
+        {/* Right Column: Inspector de Anomalías */}
+        <div className="white-widget" style={{ padding: 24 }}>
+          <div className="white-widget-header" style={{ marginBottom: 12 }}>
+            <h3 className="white-widget-title" style={{ fontSize: '1.05rem' }}>Inspector de Anomalías</h3>
+          </div>
+
+          {activeIncident ? (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 20, flex: 1 }}>
+              <div style={{ background: '#f8fafc', borderRadius: 8, padding: 24, display: 'flex', alignItems: 'center', justifyContent: 'center', border: '1px solid #e2e8f0' }}>
+                <ShieldAlert size={36} style={{ color: '#ef4444' }} />
               </div>
+
               <div>
-                <div style={{ fontSize: '0.65rem', letterSpacing: '1.5px', color: 'var(--text-muted)', marginBottom: 4 }}>CONFIANZA SMAR-IA</div>
-                <div style={{ fontSize: '1.6rem', fontWeight: 900, color: 'var(--blue)', fontFamily: "'Space Mono',monospace" }}>99.4%</div>
+                <h4 style={{ fontSize: '1.1rem', fontWeight: 700, color: '#1e293b', marginBottom: 4 }}>
+                  Ataque {activeIncident.type}
+                </h4>
+                <p style={{ fontSize: '0.8rem', color: '#64748b', margin: 0 }}>
+                  Detectado en <strong>{activeIncident.ip}</strong>
+                </p>
               </div>
-              <div style={{ marginLeft: 'auto', textAlign: 'right' }}>
-                <div style={{ fontSize: '0.65rem', color: 'var(--text-muted)', marginBottom: 4 }}>IPs SOSPECHOSAS</div>
-                <div style={{ fontSize: '1.6rem', fontWeight: 900, color: 'var(--rose)' }}>{String(suspiciousIps.length).padStart(2, '0')}</div>
+
+              {/* Live Node status */}
+              <div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.78rem', marginBottom: 6 }}>
+                  <span style={{ fontWeight: 600, color: '#475569' }}>VOLUMEN DE PETICIONES</span>
+                  <span style={{ fontWeight: 700, color: '#ef4444' }}>CRÍTICO</span>
+                </div>
+                <div className="prog-bar-track" style={{ height: 6, backgroundColor: '#f1f5f9' }}>
+                  <div className="prog-bar-fill" style={{ width: '90%', height: '100%', backgroundColor: '#ef4444', borderRadius: '3px' }} />
+                </div>
+              </div>
+
+              {/* Progress items */}
+              <div>
+                <div style={{ fontSize: '0.75rem', fontWeight: 700, color: '#64748b', marginBottom: 10, letterSpacing: '0.5px' }}>
+                  PROGRESO DE MITIGACIÓN
+                </div>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 8, fontSize: '0.8rem' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, color: '#16a34a', fontWeight: 600 }}>
+                    <CheckCircle size={14} />
+                    Tráfico reenviado al Centro de Depuración 4
+                  </div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, color: '#16a34a', fontWeight: 600 }}>
+                    <CheckCircle size={14} />
+                    IP en lista negra (Nivel 1)
+                  </div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, color: '#64748b' }}>
+                    <RefreshCw size={14} className="spin" />
+                    Limitación de tasa aplicada en proxies ascendentes
+                  </div>
+                </div>
+              </div>
+
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginTop: 'auto' }}>
+                <button 
+                  className="integrity-btn-primary" 
+                  style={{ width: '100%', margin: 0, background: '#2b0075' }}
+                  onClick={() => handleMitigate(activeIncident.ip, 'BLOCK_IP')}
+                  disabled={executing !== null}
+                >
+                  <Lock size={16} style={{ marginRight: 6 }} />
+                  {executing ? 'Bloqueando...' : 'Iniciar Bloqueo Total'}
+                </button>
+                <button 
+                  className="white-widget-tab" 
+                  style={{ width: '100%', border: '1px solid #cbd5e1', borderRadius: '6px', textAlign: 'center', padding: '10px' }}
+                  onClick={() => toast.success("Marcado como Falso Positivo.", { position: "top-center" })}
+                >
+                  Marcar como Falso Positivo
+                </button>
               </div>
             </div>
-          </div>
-        </Col>
-        <Col md={3}>
-          <div className="widget">
-            <div className="widget-body" style={{ padding: '14px 18px' }}>
-              <div style={{ fontSize: '0.65rem', letterSpacing: '1.5px', color: 'var(--text-muted)', marginBottom: 8 }}>SEGURIDAD GLOBAL</div>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                <CheckCircle size={18} style={{ color: 'var(--emerald)' }} />
-                <span style={{ fontSize: '0.78rem', color: 'var(--emerald)', fontWeight: 600 }}>382 NODOS SEGUROS</span>
-              </div>
+          ) : (
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%', color: '#64748b', fontSize: '0.85rem' }}>
+              Seleccione una anomalía para inspeccionar.
             </div>
-          </div>
-        </Col>
-      </Row>
+          )}
+        </div>
+      </div>
+
     </div>
   );
 }

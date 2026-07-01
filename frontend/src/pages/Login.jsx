@@ -1,23 +1,18 @@
-import { useState, useContext, useEffect } from 'react';
+import { useState, useContext } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { AuthContext } from '../context/AuthContext';
-import { Shield, User, Lock, ArrowRight, Wifi, AlertTriangle } from 'lucide-react';
+import { Shield, User, Lock, Eye, EyeOff, Building, Key } from 'lucide-react';
 import { toast } from 'react-toastify';
 
 export default function Login() {
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
-  const { login, token } = useContext(AuthContext);
-  const navigate = useNavigate();
-  const [time, setTime] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
+  const [rememberMe, setRememberMe] = useState(false);
 
-  useEffect(() => {
-    const tick = () => setTime(new Date().toLocaleTimeString('es-PE', { hour12: false }));
-    tick();
-    const t = setInterval(tick, 1000);
-    return () => clearInterval(t);
-  }, []);
+  const { login } = useContext(AuthContext);
+  const navigate = useNavigate();
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -36,88 +31,163 @@ export default function Login() {
   };
 
   return (
-    <div className="login-page">
-      <div className="login-grid-overlay" />
-
-      {/* Floating status bottom-left */}
-      <div style={{ position:'fixed', bottom:24, left:28, display:'flex', alignItems:'center', gap:8, fontSize:'0.68rem', fontFamily:"'Space Mono',monospace", color:'var(--text-muted)' }}>
-        <span className="status-dot green pulse" />
-        SISTEMA ACTIVO · {time}
-      </div>
-
-      {/* Floating label bottom-right */}
-      <div style={{ position:'fixed', bottom:24, right:28, fontSize:'0.68rem', fontFamily:"'Space Mono',monospace", color:'var(--text-muted)', textAlign:'right' }}>
-        NODO: CORE_CENTRAL_01<br />
-        <span style={{color:'var(--text-muted)'}}>v1.0.0 · ENCRIPTADO</span>
-      </div>
-
-      <div className="login-center">
-        {/* Brand */}
-        <div className="login-brand">
-          <div className="login-brand-logo">
-            <Shield size={30} />
+    <div className="login-split-container">
+      {/* Left Purple Panel */}
+      <div className="login-left-panel">
+        <div className="login-left-content">
+          <div className="login-left-icon-container">
+            <Shield size={36} strokeWidth={2} />
           </div>
-          <div className="login-brand-title">SMAR<span>-IA</span></div>
-          <div className="login-brand-sub">INTRUSION DETECTION SYSTEM</div>
+
+          <h1 className="login-left-title">UNIVERSIDAD CONTINENTAL</h1>
+
+          <p className="login-left-desc">
+            Protección de Red Inteligente. Gestión de SDN y ML para detección de amenazas en tiempo real.
+          </p>
+
+          <div className="login-left-footer">
+            <div className="login-avatars">
+              <span className="login-avatar" />
+              <span className="login-avatar" />
+              <span className="login-avatar" />
+            </div>
+            <span className="login-left-footer-text">
+              Utilizado por más de 2,000 empresas
+            </span>
+          </div>
+        </div>
+      </div>
+
+      {/* Right Form Panel */}
+      <div className="login-right-panel">
+        <div className="login-right-top" />
+
+        <div className="login-right-middle">
+          <div className="login-form-box">
+            <h2 className="login-right-title">Acceso Seguro</h2>
+            <p className="login-right-subtitle">
+              Ingrese sus credenciales para acceder al panel de control.
+            </p>
+
+            <form onSubmit={handleSubmit}>
+              {/* Username Field */}
+              <div className="login-field-row">
+                <div className="login-label-row">
+                  <label htmlFor="login-username" className="login-label-text">
+                    ID Corporativo
+                  </label>
+                </div>
+                <div className="login-input-wrapper">
+                  <span className="login-input-icon-left">
+                    <User size={18} />
+                  </span>
+                  <input
+                    id="login-username"
+                    type="text"
+                    placeholder="ej. j.perez@deepshield.net"
+                    value={username}
+                    onChange={(e) => setUsername(e.target.value)}
+                    required
+                    autoComplete="username"
+                  />
+                </div>
+              </div>
+
+              {/* Password Field */}
+              <div className="login-field-row">
+                <div className="login-label-row">
+                  <label htmlFor="login-password" className="login-label-text">
+                    Contraseña
+                  </label>
+                  <a href="#forgot" className="login-forgot-link" onClick={(e) => e.preventDefault()}>
+                    ¿Olvidó su contraseña?
+                  </a>
+                </div>
+                <div className="login-input-wrapper">
+                  <span className="login-input-icon-left">
+                    <Lock size={18} />
+                  </span>
+                  <input
+                    id="login-password"
+                    type={showPassword ? 'text' : 'password'}
+                    placeholder="••••••••"
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                    required
+                    autoComplete="current-password"
+                  />
+                  <button
+                    type="button"
+                    className="login-input-icon-right"
+                    onClick={() => setShowPassword(!showPassword)}
+                    aria-label={showPassword ? 'Ocultar contraseña' : 'Mostrar contraseña'}
+                  >
+                    {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
+                  </button>
+                </div>
+              </div>
+
+              {/* Remember Me Checkbox */}
+              <div className="login-checkbox-row">
+                <input
+                  id="remember-station"
+                  type="checkbox"
+                  checked={rememberMe}
+                  onChange={(e) => setRememberMe(e.target.checked)}
+                />
+                <label htmlFor="remember-station" className="login-checkbox-label">
+                  Recordar estación por 30 días
+                </label>
+              </div>
+
+              {/* Submit Button */}
+              <button
+                id="login-submit"
+                type="submit"
+                className="login-btn-primary"
+                disabled={loading}
+              >
+                <Shield size={18} />
+                {loading ? 'Entrando...' : 'Entrar'}
+              </button>
+
+              {/* Divider */}
+              <div className="login-divider-row">O autorice mediante</div>
+
+              {/* Alternative Auth Methods */}
+              <div className="login-oauth-row">
+                <button type="button" className="login-btn-oauth">
+                  <Building size={16} />
+                  SSO
+                </button>
+                <button type="button" className="login-btn-oauth">
+                  <Key size={16} />
+                  FIDO2
+                </button>
+              </div>
+            </form>
+          </div>
         </div>
 
-        {/* Card */}
-        <div className="login-card">
-          <form onSubmit={handleSubmit}>
-            <div className="mb-4">
-              <label className="login-field-label">ID de Operador</label>
-              <div className="login-input-group">
-                <User size={16} className="icon" />
-                <input
-                  id="login-username"
-                  type="text"
-                  placeholder="admin"
-                  value={username}
-                  onChange={e => setUsername(e.target.value)}
-                  required
-                  autoComplete="username"
-                />
-              </div>
-            </div>
-
-            <div className="mb-5">
-              <label className="login-field-label">Contraseña</label>
-              <div className="login-input-group">
-                <Lock size={16} className="icon" />
-                <input
-                  id="login-password"
-                  type="password"
-                  placeholder="••••••••"
-                  value={password}
-                  onChange={e => setPassword(e.target.value)}
-                  required
-                  autoComplete="current-password"
-                />
-              </div>
-            </div>
-
-            <button
-              id="login-submit"
-              type="submit"
-              className="login-submit-btn"
-              disabled={loading}
-            >
-              {loading ? 'AUTENTICANDO...' : (
-                <>INICIAR SESIÓN <ArrowRight size={15} style={{marginLeft:6}} /></>
-              )}
-            </button>
-
-            <div className="login-status-row">
-              <span className="status-dot green" />
-              <span>CONEXIÓN SEGURA · TLS 1.3</span>
-              <Wifi size={12} style={{marginLeft:'auto'}} />
-            </div>
-          </form>
-        </div>
-
-        <div className="login-warning">
-          <AlertTriangle size={13} style={{color:'var(--amber)', flexShrink:0, marginTop:1}} />
-          <span>El acceso no autorizado está prohibido y será registrado. Solo personal autorizado.</span>
+        {/* Footer */}
+        <div className="login-right-footer">
+          <div className="login-env-status">
+            <Shield size={14} className="icon" style={{ marginRight: 6 }} />
+            <span>Entorno: Cluster de Producción SDN (US-East-1)</span>
+          </div>
+          <div className="login-footer-links">
+            <a href="#privacy" className="login-footer-link" onClick={(e) => e.preventDefault()}>
+              Política de Privacidad
+            </a>
+            <span>|</span>
+            <a href="#terms" className="login-footer-link" onClick={(e) => e.preventDefault()}>
+              Acuerdo de Uso
+            </a>
+            <span>|</span>
+            <a href="#support" className="login-footer-link" onClick={(e) => e.preventDefault()}>
+              Centro de Soporte
+            </a>
+          </div>
         </div>
       </div>
     </div>

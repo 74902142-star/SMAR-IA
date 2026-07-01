@@ -1,0 +1,35 @@
+services:
+  # 🧠 Backend de FastAPI (Servicio persistente con disco para SQLite)
+  - type: web
+    name: smaria-backend
+    env: python
+    buildCommand: "cd backend && pip install -r requirements.txt"
+    startCommand: "cd backend && python -c 'from database import Base, engine; Base.metadata.create_all(bind=engine)' && uvicorn main:app --host 0.0.0.0 --port $PORT"
+    envVars:
+      - key: SMAR_IA_SECRET_KEY
+        generateValue: true
+      - key: SMAR_IA_DRY_RUN
+        value: "true" # Simula iptables en entornos en la nube sin permisos root
+      - key: SMAR_IA_CORS_ORIGINS
+        value: "*"
+    disk:
+      name: smaria-db-volume
+      mountPath: /app/db_volume
+      sizeGB: 1
+
+  # 💻 Frontend de React (Static Site)
+  - type: web
+    name: smaria-frontend
+    env: static
+    buildCommand: "cd frontend && npm install && npm run build"
+    publishPath: frontend/dist
+    headers:
+      - key: Cache-Control
+        value: public, max-age=31536000, immutable
+    rewrites:
+      - source: /api/*
+        destination: https://smaria-backend.onrender.com/api/*
+      - source: /ws
+        destination: wss://smaria-backend.onrender.com/ws
+      - source: /*
+        destination: /index.html

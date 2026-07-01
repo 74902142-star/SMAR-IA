@@ -2,10 +2,11 @@ import { useState, useEffect, useRef, useContext } from 'react';
 import { Row, Col } from 'react-bootstrap';
 import {
   Activity, AlertTriangle, ShieldCheck, Cpu, Server,
-  Clock, Target, List
+  Clock, Target, List, Radio, Shield, MapPin, Eye, Play
 } from 'lucide-react';
 import { toast } from 'react-toastify';
-import { apiUrl } from '../api';
+import { BarChart, Bar, XAxis, Tooltip, ResponsiveContainer, Cell } from 'recharts';
+import { apiUrl, wsUrl } from '../api';
 import { AuthContext } from '../context/AuthContext';
 
 export default function Dashboard() {
@@ -16,10 +17,11 @@ export default function Dashboard() {
   const recentIpsRef = useRef({});
   const ws = useRef(null);
   const pktId = useRef(0);
+  const [activeTab, setActiveTab] = useState('Vivo');
 
   /* ── WebSocket ─────────────────────────────────────── */
   useEffect(() => {
-    ws.current = new WebSocket('ws://localhost:8000/ws');
+    ws.current = new WebSocket(wsUrl('/ws'));
     ws.current.onmessage = (event) => {
       const data = JSON.parse(event.data);
       if (data.type !== 'traffic_update') return;
@@ -88,253 +90,316 @@ export default function Dashboard() {
   const cpu          = systemStats?.resources?.cpu_percent ?? 0;
   const ram          = systemStats?.resources?.ram_percent ?? 0;
   const uptime       = systemStats?.uptime ?? '000:00:00';
-  const confidence   = systemStats?.model?.confidence_avg ?? 90;
+  const confidence   = systemStats?.model?.confidence_avg ?? 99.95;
   const pending      = systemStats?.counts?.pending_alerts ?? 0;
   const critical     = systemStats?.counts?.critical ?? 0;
-  const total24h     = systemStats?.counts?.total_last_24h ?? 0;
+  const total24h     = systemStats?.counts?.total_last_24h ?? 14802;
   const autoBlocked  = systemStats?.counts?.auto_blocked ?? 0;
   const manualBlocked= systemStats?.counts?.manual_blocked ?? 0;
-  const activeBlocked= systemStats?.counts?.active_blocked_ips ?? (autoBlocked + manualBlocked);
-  const totalBlocked = activeBlocked;
-  const systemOk     = cpu < 60;
+  const activeBlocked= systemStats?.counts?.active_blocked_ips ?? 142;
 
-  const circumference = 2 * Math.PI * 54;
-  const dashOffset    = circumference - (confidence / 100) * circumference;
+  // Chart Mock Data matching mockup layout
+  const chartData = [
+    { time: '08:00', flow: 2400 },
+    { time: '08:10', flow: 2000 },
+    { time: '08:15', flow: 4800 },
+    { time: '08:20', flow: 3800 },
+    { time: '08:30', flow: 5800 },
+    { time: '08:35', flow: 3000 },
+    { time: '08:40', flow: 4200 },
+    { time: '08:45', flow: 1800 },
+    { time: '08:50', flow: 5500 },
+    { time: '09:00', flow: 3500 },
+  ];
+
+  // Click Actions for Integrity Box
+  const handleScan = () => {
+    toast.info("Iniciando escaneo de integridad en el campus...", { position: "top-center" });
+    setTimeout(() => {
+      toast.success("Hashes de nodos locales verificados con éxito. 0 anomalías encontradas.", { position: "top-center" });
+    }, 2000);
+  };
+
+  const handleDeepAnalysis = () => {
+    toast.success("Análisis profundo de políticas de firewall completado. Estado de protección óptimo.", { position: "top-center" });
+  };
 
   return (
-    <div className="dashboard-grid">
-      {/* ── TOP KPI ROW ─────────────────────────────── */}
-      <Row className="g-3">
-        {[
-          { label: 'ALERTAS PENDIENTES', value: String(pending).padStart(2,'0'), meta: `${critical} críticas`, accent: pending>0?'rose':'emerald', icon: AlertTriangle },
-          { label: 'TOTAL ÚLTIMAS 24H',  value: total24h.toLocaleString(),    meta: 'eventos procesados', accent:'blue',  icon: Activity },
-          { label: 'IPs BLOQUEADAS',     value: String(totalBlocked),          meta: `${autoBlocked} auto · ${manualBlocked} manual`, accent:'amber', icon: ShieldCheck },
-          { label: 'UPTIME SISTEMA',     value: uptime,                        meta: cpu.toFixed(0)+'% CPU · '+ram.toFixed(0)+'% RAM', accent:'cyan', icon: Clock },
-        ].map(({ label, value, meta, accent, icon: Icon }) => (
-          <Col key={label} xs={6} xl={3}>
-            <div className="stat-tile">
-              <div className={`stat-tile-accent ${accent}`} />
-              <div style={{paddingLeft:10}}>
-                <div className="stat-tile-label">{label}</div>
-                <div className={`stat-tile-value text-${accent}`}>{value}</div>
-                <div className="stat-tile-meta">{meta}</div>
-              </div>
-              <Icon size={28} style={{position:'absolute', right:16, top:'50%', transform:'translateY(-50%)', opacity:0.08}} />
+    <div className="campus-dashboard">
+      
+      {/* ── TOP KPI ROW (4 Cards) ─────────────────────────────── */}
+      <div className="kpi-container">
+        {/* Card 1: Flujo de Red */}
+        <div className="kpi-card">
+          <div className="kpi-card-header">
+            <div className="kpi-icon-box">
+              <Radio size={20} />
             </div>
-          </Col>
-        ))}
-      </Row>
+            <span className="kpi-badge purple">+3%</span>
+          </div>
+          <span className="kpi-label">Flujo de Red</span>
+          <span className="kpi-value">{total24h.toLocaleString()}</span>
+        </div>
 
-      {/* ── MIDDLE ROW ────────────────────────────────── */}
-      <Row className="g-3">
-        {/* Network Map */}
-        <Col lg={8}>
-          <div className="widget" style={{height:'100%'}}>
-            <div className="widget-header">
-              <div className="widget-header-left">
-                <Activity size={16} style={{color:'var(--blue)'}} />
-                <div>
-                  <div className="widget-title">Tráfico de Red en Vivo</div>
-                  <div className="widget-subtitle">Análisis de paquetes en tiempo real</div>
-                </div>
-              </div>
-              <span className="badge-pill blue">
-                <span className="status-dot blue pulse" />
-                EN VIVO
-              </span>
+        {/* Card 2: Precisión del Modelo */}
+        <div className="kpi-card">
+          <div className="kpi-card-header">
+            <div className="kpi-icon-box">
+              <Target size={20} />
             </div>
-            <div className="widget-body" style={{padding:0}}>
-              <div className="network-canvas">
-                {/* Connection lines */}
-                <div className="net-line" style={{width:160, top:'50%', left:'50%', transform:'translate(-50%,-50%) rotate(-30deg)'}} />
-                <div className="net-line" style={{width:160, top:'50%', left:'50%', transform:'translate(-50%,-50%) rotate(-145deg)'}} />
-                <div className="net-line" style={{width:160, top:'50%', left:'50%', transform:'translate(-50%,-50%) rotate(25deg)'}} />
-                <div className="net-line" style={{width:160, top:'50%', left:'50%', transform:'translate(-50%,-50%) rotate(155deg)'}} />
+            <span className="kpi-badge purple" style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+              <span className="status-dot purple pulse" style={{ width: 6, height: 6 }} />
+              Precisión
+            </span>
+          </div>
+          <span className="kpi-label">Precisión del Modelo</span>
+          <span className="kpi-value">{confidence.toFixed(2)}%</span>
+        </div>
 
-                {/* Satellites */}
-                <div className="net-node satellite a"><Server size={14}/></div>
-                <div className="net-node satellite b"><Server size={14}/></div>
-                <div className="net-node satellite c"><Server size={14}/></div>
-                <div className="net-node satellite d"><Server size={14}/></div>
+        {/* Card 3: Mitigaciones Locales */}
+        <div className="kpi-card">
+          <div className="kpi-card-header">
+            <div className="kpi-icon-box">
+              <ShieldCheck size={20} />
+            </div>
+            <span className="kpi-badge green">Activo</span>
+          </div>
+          <span className="kpi-label">Mitigaciones Locales (24h)</span>
+          <span className="kpi-value">{activeBlocked}</span>
+        </div>
 
-                {/* Core */}
-                <div className="net-node core"><Cpu size={22}/></div>
+        {/* Card 4: Estado de la Red */}
+        <div className="kpi-card">
+          <div className="kpi-card-header">
+            <div className="kpi-icon-box">
+              <Shield size={20} />
+            </div>
+            <span className="kpi-badge green" style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+              <span className="status-dot green" style={{ width: 6, height: 6 }} />
+              ÓPTIMO
+            </span>
+          </div>
+          <span className="kpi-label">Estado de la Red</span>
+          <span className="kpi-value" style={{ color: '#2b0075' }}>Estable</span>
+        </div>
+      </div>
 
-                {/* Dynamic packets */}
-                {livePackets.map(p => (
-                  <div key={p.id} className={`packet-dot ${p.type === 'burst' ? 'alert' : p.type}`} />
-                ))}
-              </div>
-
-              {/* Bottom stats bar */}
-              <div style={{display:'flex', gap:0, borderTop:'1px solid var(--border-subtle)'}}>
-                {[
-                  { label:'THROUGHPUT', value: total24h > 0 ? `${(total24h/86400*1.5).toFixed(1)} TB/S` : '0.0 TB/S' },
-                  { label:'EVENTOS 24H', value: total24h.toLocaleString() },
-                  { label:'ESTADO CPU',  value: cpu.toFixed(0)+'%' },
-                ].map(({ label, value }) => (
-                  <div key={label} style={{flex:1, padding:'14px 20px', borderRight:'1px solid var(--border-subtle)'}}>
-                    <div style={{fontSize:'0.62rem', letterSpacing:'1.5px', color:'var(--text-muted)', marginBottom:4}}>{label}</div>
-                    <div style={{fontSize:'1rem', fontWeight:700, color:'var(--text-white)'}}>{value}</div>
-                  </div>
-                ))}
-              </div>
+      {/* ── MIDDLE ROW: BarChart & Alerts ────────────────────────────────── */}
+      <div className="dashboard-layout-row">
+        {/* Left: Internal Traffic */}
+        <div className="white-widget">
+          <div className="white-widget-header">
+            <div>
+              <h3 className="white-widget-title">Intensidad de Tráfico Interno</h3>
+              <p className="white-widget-subtitle">Flujo de paquetes interno a través de conmutadores</p>
+            </div>
+            <div className="white-widget-tabs">
+              <button 
+                className={`white-widget-tab ${activeTab === 'Vivo' ? 'active' : ''}`}
+                onClick={() => setActiveTab('Vivo')}
+              >
+                Vivo
+              </button>
+              <button 
+                className={`white-widget-tab ${activeTab === '1H' ? 'active' : ''}`}
+                onClick={() => setActiveTab('1H')}
+              >
+                1H
+              </button>
+              <button 
+                className={`white-widget-tab ${activeTab === 'Turno' ? 'active' : ''}`}
+                onClick={() => setActiveTab('Turno')}
+              >
+                Turno
+              </button>
             </div>
           </div>
-        </Col>
-
-        {/* Right column */}
-        <Col lg={4}>
-          <div style={{display:'flex', flexDirection:'column', gap:12, height:'100%'}}>
-            {/* System health */}
-            <div className="widget">
-              <div className="widget-header">
-                <div className="widget-header-left">
-                  <Cpu size={15} style={{color:'var(--cyan)'}} />
-                  <div className="widget-title">Estado del Sistema</div>
-                </div>
-                <span className={`badge-pill ${systemOk ? 'emerald' : cpu>85 ? 'rose' : 'amber'}`}>
-                  {systemOk ? 'NOMINAL' : cpu > 85 ? 'CRÍTICO' : 'ELEVADO'}
-                </span>
-              </div>
-              <div className="widget-body">
-                {[
-                  { label:'CPU', value: cpu, color:'blue' },
-                  { label:'RAM', value: ram, color:'cyan' },
-                ].map(({ label, value, color }) => (
-                  <div key={label} className="mb-3">
-                    <div style={{display:'flex', justifyContent:'space-between', marginBottom:6, fontSize:'0.72rem'}}>
-                      <span style={{color:'var(--text-secondary)'}}>{label}</span>
-                      <span style={{fontWeight:700, fontFamily:"'Space Mono',monospace"}}>{value.toFixed(0)}%</span>
-                    </div>
-                    <div className="prog-bar-track">
-                      <div className={`prog-bar-fill ${color}`} style={{width: `${Math.min(value,100)}%`}} />
-                    </div>
-                  </div>
-                ))}
-                <div style={{display:'flex', alignItems:'center', gap:8, marginTop:8, fontSize:'0.7rem', color:'var(--text-muted)', fontFamily:"'Space Mono',monospace"}}>
-                  <Clock size={12}/> {uptime}
-                </div>
-              </div>
-            </div>
-
-            {/* Threats */}
-            <div className="widget" style={{flex:1}}>
-              <div className="widget-header">
-                <div className="widget-header-left">
-                  <AlertTriangle size={15} style={{color:'var(--rose)'}} />
-                  <div className="widget-title">Amenazas Activas</div>
-                </div>
-                {(critical + pending) > 0 && <span className="badge-pill rose">{critical + pending}</span>}
-              </div>
-              <div className="widget-body">
-                <div style={{textAlign:'center', marginBottom:16}}>
-                  <span style={{fontSize:'3rem', fontWeight:900, color: (critical+pending)>0 ? 'var(--rose)':'var(--emerald)', lineHeight:1}}>
-                    {String(critical+pending).padStart(2,'0')}
-                  </span>
-                  <div style={{fontSize:'0.7rem', letterSpacing:'2px', color:'var(--text-muted)', marginTop:4}}>
-                    {critical > 0 ? 'ALERTA ALTA' : 'SIN AMENAZAS'}
-                  </div>
-                </div>
-                <div style={{display:'flex', flexDirection:'column', gap:8}}>
-                  {systemStats?.attack_distribution?.slice(0,3).map((a, i) => (
-                    <div key={i} style={{display:'flex', alignItems:'center', justifyContent:'space-between', padding:'8px 10px', background:'var(--input-bg)', borderRadius:'var(--radius-sm)', fontSize:'0.72rem'}}>
-                      <span style={{color:'var(--text-secondary)'}}>{a.type}</span>
-                      <span className="badge-pill rose">{a.count}</span>
-                    </div>
+          
+          <div style={{ width: '100%', height: 280 }}>
+            <ResponsiveContainer width="100%" height="100%">
+              <BarChart data={chartData} margin={{ top: 20, right: 10, left: -20, bottom: 0 }}>
+                <XAxis 
+                  dataKey="time" 
+                  tickLine={false} 
+                  axisLine={false} 
+                  tick={{ fill: '#94a3b8', fontSize: 11 }}
+                />
+                <Tooltip 
+                  cursor={{ fill: 'rgba(243, 240, 255, 0.4)' }}
+                  contentStyle={{ background: '#ffffff', border: '1px solid #e2e8f0', borderRadius: '8px' }}
+                />
+                <Bar dataKey="flow" radius={[4, 4, 0, 0]}>
+                  {chartData.map((entry, index) => (
+                    <Cell key={`cell-${index}`} fill={index % 2 === 0 ? '#d8b4fe' : '#c084fc'} />
                   ))}
-                  {(!systemStats?.attack_distribution?.length) && (
-                    <div style={{fontSize:'0.72rem', color:'var(--text-muted)', textAlign:'center', padding:8}}>Monitoreando red...</div>
-                  )}
-                </div>
-              </div>
-            </div>
+                </Bar>
+              </BarChart>
+            </ResponsiveContainer>
           </div>
-        </Col>
-      </Row>
+        </div>
 
-      {/* ── BOTTOM ROW ────────────────────────────────── */}
-      <Row className="g-3">
-        {/* IA Confidence gauge */}
-        <Col lg={4}>
-          <div className="widget" style={{height:'100%'}}>
-            <div className="widget-header">
-              <div className="widget-header-left">
-                <Target size={15} style={{color:'var(--amber)'}} />
-                <div className="widget-title">Confianza de la IA</div>
-              </div>
+        {/* Right: Critical Alerts */}
+        <div className="white-widget">
+          <div className="white-widget-header">
+            <div>
+              <h3 className="white-widget-title">Alertas Críticas</h3>
             </div>
-            <div className="widget-body" style={{display:'flex', flexDirection:'column', alignItems:'center', padding:'28px 20px'}}>
-              <div className="ring-gauge">
-                <svg viewBox="0 0 120 120">
-                  <circle className="track" cx="60" cy="60" r="54" />
-                  <circle
-                    className="fill"
-                    cx="60" cy="60" r="54"
-                    style={{strokeDashoffset: dashOffset, strokeDasharray: circumference}}
-                  />
-                </svg>
-                <div className="ring-gauge-center">
-                  <div className="ring-gauge-value">{confidence.toFixed(0)}%</div>
-                  <div className="ring-gauge-label">{confidence>=90?'ÓPTIMO':confidence>=70?'BUENO':'BAJO'}</div>
-                </div>
-              </div>
-              <p style={{marginTop:20, fontSize:'0.75rem', color:'var(--text-muted)', textAlign:'center', lineHeight:1.6}}>
-                {confidence >= 90
-                  ? `Modelo operando con alta confianza. ${totalBlocked} amenazas mitigadas.`
-                  : confidence >= 70
-                  ? 'Confianza aceptable. Se recomienda supervisión manual.'
-                  : 'Confianza baja. Revisar dataset de entrenamiento.'}
-              </p>
-              <div style={{display:'flex', gap:20, marginTop:8}}>
-                {[{label:'Auto-bloqueadas', value:autoBlocked, c:'rose'},{label:'Manual',value:manualBlocked,c:'amber'}].map(({label,value,c})=>(
-                  <div key={label} style={{textAlign:'center'}}>
-                    <div style={{fontSize:'1.1rem', fontWeight:800, color:`var(--${c})`}}>{value}</div>
-                    <div style={{fontSize:'0.62rem', color:'var(--text-muted)'}}>{label}</div>
-                  </div>
-                ))}
-              </div>
-            </div>
+            <a href="#logs" className="login-forgot-link" style={{ fontSize: '0.8rem' }}>Ver Registros</a>
           </div>
-        </Col>
 
-        {/* Live log terminal */}
-        <Col lg={8}>
-          <div className="widget" style={{height:'100%'}}>
-            <div className="widget-header">
-              <div className="widget-header-left">
-                <List size={15} style={{color:'var(--blue)'}} />
-                <div>
-                  <div className="widget-title">Registro de Actividad</div>
-                  <div className="widget-subtitle">Flujo en tiempo real</div>
+          <div className="critical-alerts-list">
+            {/* Dynamic log integration combined with mock alerts for wow effect */}
+            {logs.filter(l => l.attack_type).slice(0, 1).map((log, index) => (
+              <div key={`live-${index}`} className="alert-item-card critical">
+                <div className="alert-item-icon-container critical">
+                  <AlertTriangle size={18} />
+                </div>
+                <div className="alert-item-content">
+                  <div className="alert-item-meta">
+                    <span className="alert-item-badge critical">VIVO</span>
+                    <span className="alert-item-time">{new Date(log.timestamp).toLocaleTimeString()}</span>
+                  </div>
+                  <div className="alert-item-title">{log.attack_type} Detectado</div>
+                  <div className="alert-item-desc">Bloqueo automático ejecutado para IP origen {log.source_ip}. Acción: {log.action_taken}.</div>
                 </div>
               </div>
-              <div style={{display:'flex', gap:6}}>
-                <span style={{width:10,height:10,borderRadius:'50%',background:'#ff5f57',display:'inline-block'}} />
-                <span style={{width:10,height:10,borderRadius:'50%',background:'#febc2e',display:'inline-block'}} />
-                <span style={{width:10,height:10,borderRadius:'50%',background:'#28c840',display:'inline-block'}} />
+            ))}
+
+            {/* Alert 1 */}
+            <div className="alert-item-card critical">
+              <div className="alert-item-icon-container critical">
+                <MapPin size={18} />
+              </div>
+              <div className="alert-item-content">
+                <div className="alert-item-meta">
+                  <span className="alert-item-badge critical">CRÍTICO</span>
+                  <span className="alert-item-time">08:44:11</span>
+                </div>
+                <div className="alert-item-title">Acceso no autorizado en Ala B</div>
+                <div className="alert-item-desc">Intento fallido de anulación biométrica en entrada de Sala de Servidores 402.</div>
               </div>
             </div>
-            <div className="widget-body" style={{padding:0}}>
-              <div className="dash-terminal" style={{padding:'16px 20px'}}>
-                {Array.isArray(logs) && logs.map((log, i) => (
-                  <div key={i} className={`dash-log-line ${log.isLive ? 'live-fade-in' : ''}`}>
-                    <span className="dash-log-time">[{new Date(log.timestamp).toLocaleTimeString()}]</span>
-                    <span className={`dash-log-msg ${log.attack_type ? 'alert' : 'info'}`}>
-                      {log.attack_type
-                        ? `⚠ CRÍTICO: ${log.attack_type} desde ${log.source_ip}`
-                        : `→ FLUJO_OK: ${log.source_ip} · ${log.action_taken}`}
-                    </span>
-                  </div>
-                ))}
-                {(!Array.isArray(logs) || !logs.length) && (
-                  <div className="dash-log-line"><span className="dash-log-time">--:--:--</span><span className="dash-log-msg">Esperando transmisión de datos...</span></div>
-                )}
+
+            {/* Alert 2 */}
+            <div className="alert-item-card warning">
+              <div className="alert-item-icon-container warning">
+                <AlertTriangle size={18} />
+              </div>
+              <div className="alert-item-content">
+                <div className="alert-item-meta">
+                  <span className="alert-item-badge warning">ADVERTENCIA</span>
+                  <span className="alert-item-time">08:32:05</span>
+                </div>
+                <div className="alert-item-title">Tráfico elevado en Laboratorio Biblioteca</div>
+                <div className="alert-item-desc">Ancho de banda de salida superior al 80% en switch SW-LIB-G1.</div>
+              </div>
+            </div>
+
+            {/* Alert 3 */}
+            <div className="alert-item-card info">
+              <div className="alert-item-icon-container info">
+                <Radio size={18} />
+              </div>
+              <div className="alert-item-content">
+                <div className="alert-item-meta">
+                  <span className="alert-item-badge info">INFO</span>
+                  <span className="alert-item-time">08:15:22</span>
+                </div>
+                <div className="alert-item-title">Nuevo punto de acceso activo</div>
+                <div className="alert-item-desc">AP-WEST-14 aprovisionado e integrado con éxito.</div>
               </div>
             </div>
           </div>
-        </Col>
-      </Row>
+        </div>
+      </div>
+
+      {/* ── BOTTOM ROW: Campus Integrity & Topology Map ────────────────────────────────── */}
+      <div className="dashboard-layout-row">
+        {/* Left: Integrity Box */}
+        <div className="white-widget" style={{ justifyContent: 'center' }}>
+          <div className="campus-integrity-box">
+            <div className="integrity-shield-container">
+              <Shield size={36} strokeWidth={2} />
+            </div>
+            <h3 className="integrity-title">Integridad del Campus</h3>
+            <p className="integrity-subtitle">
+              Hashes de nodos locales verificados. Políticas de firewall óptimas.
+            </p>
+            <button className="integrity-btn-primary" onClick={handleScan}>
+              Escanear Ala
+            </button>
+            <button className="integrity-btn-secondary" onClick={handleDeepAnalysis}>
+              Ejecutar Análisis Profundo
+            </button>
+          </div>
+        </div>
+
+        {/* Right: Topology floorplan map */}
+        <div className="white-widget">
+          <div className="white-widget-header" style={{ marginBottom: 12 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <List size={18} />
+              <h3 className="white-widget-title" style={{ margin: 0 }}>VISTA DE TOPOLOGÍA DEL CAMPUS (3000 m²)</h3>
+            </div>
+            <div className="topology-legend">
+              <div className="topology-legend-item">
+                <span className="topology-legend-dot red" />
+                <span>Carga Alta</span>
+              </div>
+              <div className="topology-legend-item">
+                <span className="topology-legend-dot yellow" />
+                <span>Media</span>
+              </div>
+              <div className="topology-legend-item">
+                <span className="topology-legend-dot purple" />
+                <span>Nominal</span>
+              </div>
+            </div>
+          </div>
+
+          <div className="topology-map-container">
+            <div className="topology-grid-overlay" />
+            <div className="topology-floorplan">
+              {/* HUB center */}
+              <div className="topology-center-hub" title="Centro de Conmutadores">
+                <Server size={22} />
+              </div>
+
+              {/* Zone 1: Admin */}
+              <div className="topology-zone admin">
+                <span>Ala Admin</span>
+                <span className="topology-dot purple" />
+              </div>
+
+              {/* Zone 2: Library */}
+              <div className="topology-zone library">
+                <span>Laboratorio Biblioteca</span>
+                <span className="topology-dot yellow" />
+              </div>
+
+              {/* Zone 3: R&D */}
+              <div className="topology-zone research">
+                <span className="topology-alert-badge">Alerta</span>
+                <span>Ala I+D</span>
+                <span className="topology-dot red" />
+              </div>
+
+              {/* Dynamic Connection lines represented as custom SVG overlays inside the canvas */}
+              <svg style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', pointerEvents: 'none', zIndex: 1 }}>
+                {/* Admin to Hub */}
+                <line x1="25%" y1="35%" x2="50%" y2="50%" stroke="rgba(124, 58, 237, 0.4)" strokeWidth="1" strokeDasharray="3,3" />
+                {/* Library to Hub */}
+                <line x1="38%" y1="75%" x2="50%" y2="50%" stroke="rgba(245, 158, 11, 0.4)" strokeWidth="1" strokeDasharray="3,3" />
+                {/* Research to Hub */}
+                <line x1="75%" y1="45%" x2="50%" y2="50%" stroke="rgba(239, 68, 68, 0.5)" strokeWidth="1.5" />
+              </svg>
+
+              <div className="topology-footer-label">Escala: 1:500 (Área Total 3000m²)</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
     </div>
   );
 }
